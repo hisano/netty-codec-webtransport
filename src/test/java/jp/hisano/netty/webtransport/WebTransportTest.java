@@ -17,6 +17,7 @@ import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.incubator.codec.http3.DefaultHttp3DataFrame;
 import io.netty.incubator.codec.http3.DefaultHttp3HeadersFrame;
+import io.netty.incubator.codec.http3.DefaultHttp3SettingsFrame;
 import io.netty.incubator.codec.http3.Http3;
 import io.netty.incubator.codec.http3.Http3DataFrame;
 import io.netty.incubator.codec.http3.Http3HeadersFrame;
@@ -96,6 +97,7 @@ public class WebTransportTest {
 				.applicationProtocols(Http3.supportedApplicationProtocols()).build();
 		ChannelHandler codec = Http3.newQuicServerCodecBuilder()
 				.sslContext(sslContext)
+				.datagram(2048, 2048)
 				.maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
 				.initialMaxData(10000000)
 				.initialMaxStreamDataBidirectionalLocal(1000000)
@@ -105,18 +107,32 @@ public class WebTransportTest {
 				.handler(new ChannelInitializer<QuicChannel>() {
 					@Override
 					protected void initChannel(QuicChannel ch) {
+						System.out.println("Received connection " + ch);
+
+						DefaultHttp3SettingsFrame settingsFrame = new DefaultHttp3SettingsFrame();
+						settingsFrame.put(0x08L, 1L);
+						settingsFrame.put(0x33L, 1L);
+						settingsFrame.put(0x2b60_3742L, 1L);
+						settingsFrame.put(0xc671_706aL, 1L);
+
 						// Called for each connection
 						ch.pipeline().addLast(new Http3ServerConnectionHandler(
 								new ChannelInitializer<QuicStreamChannel>() {
 									// Called for each request-stream,
 									@Override
 									protected void initChannel(QuicStreamChannel ch) {
+										System.out.println("Received stream " + ch);
 										ch.pipeline().addLast(new Http3RequestStreamInboundHandler() {
 
 											@Override
 											protected void channelRead(
 													ChannelHandlerContext ctx, Http3HeadersFrame frame) {
-												ReferenceCountUtil.release(frame);
+												System.out.println("Received headers " + frame.headers());
+												if (frame.headers().contains(":protocol", "webtransport")) {
+													System.out.println("WebTransport accepted");
+												} else {
+													ReferenceCountUtil.release(frame);
+												}
 											}
 
 											@Override
@@ -148,7 +164,7 @@ public class WebTransportTest {
 											}
 										});
 									}
-								}));
+								}, null, null, settingsFrame, true));
 					}
 				}).build();
 		Bootstrap bs = new Bootstrap();
