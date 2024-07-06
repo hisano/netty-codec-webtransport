@@ -130,6 +130,9 @@ public class WebTransportTest {
 												System.out.println("Received headers " + frame.headers());
 												if (frame.headers().contains(":protocol", "webtransport")) {
 													System.out.println("WebTransport accepted");
+													Http3HeadersFrame headersFrame = new DefaultHttp3HeadersFrame();
+													headersFrame.headers().status("200");
+													ctx.writeAndFlush(headersFrame);
 												} else {
 													ReferenceCountUtil.release(frame);
 												}
