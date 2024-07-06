@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<body>
+Hello World!
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        function decodeBase64(base64) {
+            var bytesString = atob(base64);
+            var bytes = new Uint8Array(bytesString.length);
+            for (var i = 0; i < bytesString.length; i++) {
+                bytes[i] = bytesString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        if ('WebTransport' in window) {
+            const transport = new WebTransport('https://127.0.0.1:4433/webtransport', {
+                serverCertificateHashes: [
+                    {algortithm: 'sha-256', value: decodeBase64('$CERTIFICATE_HASH')}
+                ]
+            });
+            console.log('WebTransport connection started.');
+
+            try {
+                await transport.ready;
+                console.log('WebTransport connection established.');
+
+                const writer = transport.sendDatagrams().writable.getWriter();
+                const encoder = new TextEncoder();
+                const data = encoder.encode('abc');
+
+                await writer.write(data);
+                console.log('Data sent: abc');
+
+                await writer.close();
+                console.log('Stream closed.');
+            } catch (error) {
+                console.error('Failed to send data via WebTransport:', error);
+            }
+        } else {
+            console.error('WebTransport is not supported in your browser.');
+        }
+    });
+</script>
+</body>
+</html>

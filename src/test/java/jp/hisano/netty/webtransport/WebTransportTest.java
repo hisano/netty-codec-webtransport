@@ -1,5 +1,6 @@
 package jp.hisano.netty.webtransport;
 
+import com.google.common.io.Resources;
 import com.microsoft.playwright.Browser;
 import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Page;
@@ -29,6 +30,7 @@ import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.util.ReferenceCountUtil;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -37,6 +39,8 @@ import java.security.PublicKey;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Date;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -47,15 +51,19 @@ public class WebTransportTest {
 	private static final int PORT = 4433;
 
 	@Test
-	public void testHttp3() throws Exception {
-		SelfSignedCertificate selfSignedCertificate = new SelfSignedCertificate();
+	public void testWebTransport() throws Exception {
+		Date now = new Date();
+		Date oneDayLater = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+		SelfSignedCertificate selfSignedCertificate = new SelfSignedCertificate(now, oneDayLater, "EC", 256);
+
 		NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
 		try {
 			startHttp3Server(selfSignedCertificate, eventLoopGroup);
 
 			try (Playwright playwright = Playwright.create()) {
-				BrowserType browserType = playwright.chromium(); // Chromiumを使用
+				BrowserType browserType = playwright.chromium();
 				Browser browser = browserType.launch(new BrowserType.LaunchOptions()
+						.setHeadless(false)
 						.setArgs(Arrays.asList(
 								"--test-type",
 								"--enable-quic",
@@ -64,9 +72,19 @@ public class WebTransportTest {
 								"--ignore-certificate-errors-spki-list=" + toPublicKeyHashAsBase64(selfSignedCertificate.cert())
 						)));
 
+				CountDownLatch waiter = new CountDownLatch(1);
+
 				Page page = browser.newPage();
+				page.onConsoleMessage(message -> {
+					System.out.println(">> " + message.text());
+					if ("Stream closed.".equals(message.text())) {
+						waiter.countDown();
+					}
+				});
 				page.navigate("https://127.0.0.1:4433/");
 				assertTrue(page.textContent("*").contains(MESSAGE));
+
+				waiter.await();
 			}
 		} finally {
 			eventLoopGroup.shutdownGracefully();
@@ -109,14 +127,23 @@ public class WebTransportTest {
 
 											@Override
 											protected void channelInputClosed(ChannelHandlerContext ctx) {
+												String content;
+												try {
+													content = new String(Resources.toByteArray(Resources.getResource(WebTransportTest.class, "index.html")), StandardCharsets.UTF_8);
+												} catch (IOException e) {
+													throw new IllegalStateException(e);
+												}
+												String replacedContent = content.replace("$CERTIFICATE_HASH", toPublicKeyHashAsBase64(selfSignedCertificate.cert()));
+												byte[] replacedContentBytes = replacedContent.getBytes(StandardCharsets.UTF_8);
+
 												Http3HeadersFrame headersFrame = new DefaultHttp3HeadersFrame();
 												headersFrame.headers().status("200");
 												headersFrame.headers().add("server", "netty");
 												headersFrame.headers().add("content-type", "text/html");
-												headersFrame.headers().addInt("content-length", CONTENT.length);
+												headersFrame.headers().addInt("content-length", replacedContentBytes.length);
 												ctx.write(headersFrame);
 												ctx.writeAndFlush(new DefaultHttp3DataFrame(
-																Unpooled.wrappedBuffer(CONTENT)))
+																Unpooled.wrappedBuffer(replacedContentBytes)))
 														.addListener(QuicStreamChannel.SHUTDOWN_OUTPUT);
 											}
 										});
