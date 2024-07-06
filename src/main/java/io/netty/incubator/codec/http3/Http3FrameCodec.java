@@ -394,7 +394,7 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
     private boolean decodeHeaders(ChannelHandlerContext ctx, Http3Headers headers, ByteBuf in, int length,
                                   boolean trailer) {
         try {
-            Http3HeadersSink sink = new Http3HeadersSink(headers, maxHeaderListSize, true, trailer);
+            Http3HeadersSink sink = new Http3HeadersSink(headers, maxHeaderListSize, false, trailer);
             assert qpackAttributes != null;
             assert readResumptionListener != null;
             if (qpackDecoder.decode(qpackAttributes,
