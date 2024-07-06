@@ -113,7 +113,7 @@ public class WebTransportTest {
 						settingsFrame.put(0x08L, 1L);
 						settingsFrame.put(0x33L, 1L);
 						settingsFrame.put(0x2b60_3742L, 1L);
-						settingsFrame.put(0xc671_706aL, 1L);
+						settingsFrame.put(0xc671_706aL, 256L);
 
 						// Called for each connection
 						ch.pipeline().addLast(new Http3ServerConnectionHandler(
