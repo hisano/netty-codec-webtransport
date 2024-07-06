@@ -68,7 +68,7 @@ public class WebTransportTest {
 								"--test-type",
 								"--enable-quic",
 								"--quic-version=h3",
-								"--origin-to-force-quic-on=127.0.0.1:4433",
+								"--origin-to-force-quic-on=localhost:4433",
 								"--ignore-certificate-errors-spki-list=" + toPublicKeyHashAsBase64(selfSignedCertificate.cert())
 						)));
 
@@ -81,7 +81,7 @@ public class WebTransportTest {
 						waiter.countDown();
 					}
 				});
-				page.navigate("https://127.0.0.1:4433/");
+				page.navigate("https://localhost:4433/");
 				assertTrue(page.textContent("*").contains(MESSAGE));
 
 				waiter.await();

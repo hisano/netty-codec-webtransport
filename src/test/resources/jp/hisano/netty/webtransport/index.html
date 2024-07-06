@@ -17,7 +17,7 @@ Hello World!
         }
 
         if ('WebTransport' in window) {
-            const transport = new WebTransport('https://127.0.0.1:4433/webtransport', {
+            const transport = new WebTransport('https://localhost:4433/webtransport', {
                 serverCertificateHashes: [
                     {algortithm: 'sha-256', value: decodeBase64('$CERTIFICATE_HASH')}
                 ]
