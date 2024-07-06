@@ -1,11 +1,16 @@
 package jp.hisano.netty.webtransport;
 
+import com.microsoft.playwright.Browser;
+import com.microsoft.playwright.BrowserType;
+import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Playwright;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
@@ -26,20 +31,50 @@ import org.junit.jupiter.api.Test;
 
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.CountDownLatch;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.PublicKey;
+import java.security.cert.X509Certificate;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 public class WebTransportTest {
-	private static final byte[] CONTENT = "Hello World!\r\n".getBytes(StandardCharsets.UTF_8);
-	private static final int PORT = 843;
+	private static final String MESSAGE = "Hello World!";
+	private static final byte[] CONTENT = (MESSAGE + "\r\n").getBytes(StandardCharsets.UTF_8);
+	private static final int PORT = 4433;
 
 	@Test
-	public void testBasic() throws Exception {
-		CountDownLatch waiter = new CountDownLatch(1);
+	public void testHttp3() throws Exception {
+		SelfSignedCertificate selfSignedCertificate = new SelfSignedCertificate();
+		NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
+		try {
+			startHttp3Server(selfSignedCertificate, eventLoopGroup);
 
-		NioEventLoopGroup group = new NioEventLoopGroup(1);
-		SelfSignedCertificate cert = new SelfSignedCertificate();
-		QuicSslContext sslContext = QuicSslContextBuilder.forServer(cert.key(), null, cert.cert())
+			try (Playwright playwright = Playwright.create()) {
+				BrowserType browserType = playwright.chromium(); // Chromiumを使用
+				Browser browser = browserType.launch(new BrowserType.LaunchOptions()
+						.setArgs(Arrays.asList(
+								"--test-type",
+								"--enable-quic",
+								"--quic-version=h3",
+								"--origin-to-force-quic-on=127.0.0.1:4433",
+								"--ignore-certificate-errors-spki-list=" + toPublicKeyHashAsBase64(selfSignedCertificate.cert())
+						)));
+
+				Page page = browser.newPage();
+				page.navigate("https://127.0.0.1:4433/");
+				assertTrue(page.textContent("*").contains(MESSAGE));
+			}
+		} finally {
+			eventLoopGroup.shutdownGracefully();
+		}
+	}
+
+	private static void startHttp3Server(SelfSignedCertificate selfSignedCertificate, EventLoopGroup eventLoopGroup) throws InterruptedException {
+		QuicSslContext sslContext = QuicSslContextBuilder.forServer(selfSignedCertificate.key(), null, selfSignedCertificate.cert())
 				.applicationProtocols(Http3.supportedApplicationProtocols()).build();
 		ChannelHandler codec = Http3.newQuicServerCodecBuilder()
 				.sslContext(sslContext)
@@ -82,28 +117,32 @@ public class WebTransportTest {
 												ctx.write(headersFrame);
 												ctx.writeAndFlush(new DefaultHttp3DataFrame(
 																Unpooled.wrappedBuffer(CONTENT)))
-														.addListener(QuicStreamChannel.SHUTDOWN_OUTPUT)
-														.addListener(result -> {
-															waiter.countDown();
-														});
+														.addListener(QuicStreamChannel.SHUTDOWN_OUTPUT);
 											}
 										});
 									}
 								}));
 					}
 				}).build();
+		Bootstrap bs = new Bootstrap();
+		Channel channel = bs.group(eventLoopGroup)
+				.channel(NioDatagramChannel.class)
+				.handler(codec)
+				.bind(new InetSocketAddress(PORT)).sync().channel();
+	}
+
+	private static String toPublicKeyHashAsBase64(X509Certificate certificate) {
+		PublicKey publicKey = certificate.getPublicKey();
+
+		byte[] publicKeyAsDer = publicKey.getEncoded();
+
+		byte[] publicKeyHash;
 		try {
-			Bootstrap bs = new Bootstrap();
-			Channel channel = bs.group(group)
-					.channel(NioDatagramChannel.class)
-					.handler(codec)
-					.bind(new InetSocketAddress(PORT)).sync().channel();
-
-			// Wait for 'docker run -t --rm badouralix/curl-http3 --insecure --verbose https://host.docker.internal:843/'
-
-			waiter.await(10, TimeUnit.SECONDS);
-		} finally {
-			group.shutdownGracefully();
+			publicKeyHash = MessageDigest.getInstance("SHA-256").digest(publicKeyAsDer);
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
 		}
+
+		return Base64.getEncoder().encodeToString(publicKeyHash);
 	}
 }
