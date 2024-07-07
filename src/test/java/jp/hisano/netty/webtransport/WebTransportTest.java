@@ -6,6 +6,7 @@ import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
@@ -40,62 +41,67 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
+import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class WebTransportTest {
-	private static final String MESSAGE = "Hello World!";
-	private static final byte[] CONTENT = (MESSAGE + "\r\n").getBytes(StandardCharsets.UTF_8);
-	private static final int PORT = 4433;
-
 	@Test
-	public void testWebTransport() throws Exception {
-		Date now = new Date();
-		Date oneDayLater = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-		SelfSignedCertificate selfSignedCertificate = new SelfSignedCertificate(now, oneDayLater, "EC", 256);
+	public void testBidirectionalStream() throws Exception {
+		BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+
+		SelfSignedCertificate selfSignedCertificate = createSelfSignedCertificateForLocalHost();
 
 		NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
 		try {
-			startHttp3Server(selfSignedCertificate, eventLoopGroup);
+			startServer(messages, selfSignedCertificate, eventLoopGroup);
+			startClient(messages, selfSignedCertificate);
 
-			try (Playwright playwright = Playwright.create()) {
-				BrowserType browserType = playwright.chromium();
-				Browser browser = browserType.launch(new BrowserType.LaunchOptions()
-						.setHeadless(false)
-						.setArgs(Arrays.asList(
-								"--test-type",
-								"--enable-quic",
-								"--quic-version=h3",
-								"--origin-to-force-quic-on=localhost:4433",
-								"--ignore-certificate-errors-spki-list=" + toPublicKeyHashAsBase64(selfSignedCertificate.cert())
-						)));
-
-				CountDownLatch waiter = new CountDownLatch(1);
-
-				Page page = browser.newPage();
-				page.onConsoleMessage(message -> {
-					System.out.println(">> " + message.text());
-					if ("Stream closed.".equals(message.text())) {
-						waiter.countDown();
-					}
-				});
-				page.navigate("https://localhost:4433/");
-				assertTrue(page.textContent("*").contains(MESSAGE));
-
-				waiter.await();
-			}
+			assertEquals("packet received: abc", messages.poll());
+			assertEquals("packet received: def", messages.poll());
+			assertEquals("stream closed", messages.poll());
 		} finally {
 			eventLoopGroup.shutdownGracefully();
 		}
 	}
 
-	private static void startHttp3Server(SelfSignedCertificate selfSignedCertificate, EventLoopGroup eventLoopGroup) throws InterruptedException {
+	private static void startClient(BlockingQueue<String> messages, SelfSignedCertificate selfSignedCertificate) throws InterruptedException {
+		CountDownLatch waiter = new CountDownLatch(1);
+		try (Playwright playwright = Playwright.create()) {
+			BrowserType browserType = playwright.chromium();
+			Browser browser = browserType.launch(new BrowserType.LaunchOptions()
+//					.setHeadless(false)
+					.setArgs(Arrays.asList(
+							"--test-type",
+							"--enable-quic",
+							"--quic-version=h3",
+							"--origin-to-force-quic-on=localhost:4433",
+							"--ignore-certificate-errors-spki-list=" + toPublicKeyHashAsBase64(selfSignedCertificate.cert())
+					)));
+
+			Page page = browser.newPage();
+			page.onConsoleMessage(message -> {
+				System.out.println("[DevTools Console] " + message.text());
+				if ("Stream closed.".equals(message.text())) {
+					messages.add("stream closed");
+					waiter.countDown();
+				}
+			});
+			page.navigate("https://localhost:4433/");
+			page.textContent("*").contains("Hello World!");
+			waiter.await(10, TimeUnit.MINUTES);
+		}
+	}
+
+	private static void startServer(BlockingQueue<String> messages, SelfSignedCertificate selfSignedCertificate, EventLoopGroup eventLoopGroup) throws InterruptedException {
 		QuicSslContext sslContext = QuicSslContextBuilder.forServer(selfSignedCertificate.key(), null, selfSignedCertificate.cert())
 				.applicationProtocols(Http3.supportedApplicationProtocols()).build();
 		ChannelHandler codec = Http3.newQuicServerCodecBuilder()
@@ -110,7 +116,7 @@ public class WebTransportTest {
 				.handler(new ChannelInitializer<QuicChannel>() {
 					@Override
 					protected void initChannel(QuicChannel ch) {
-						System.out.println("Received connection " + ch);
+						System.out.println("Connection created: channelId = " + ch.id());
 
 						DefaultHttp3SettingsFrame settingsFrame = new DefaultHttp3SettingsFrame();
 						settingsFrame.put(0x08L, 1L);
@@ -124,15 +130,24 @@ public class WebTransportTest {
 									// Called for each request-stream,
 									@Override
 									protected void initChannel(QuicStreamChannel ch) {
-										System.out.println("Received stream " + ch);
+										System.out.println("Stream created: streamId = " + ch.streamId());
+
 										ch.pipeline().addLast(new Http3RequestStreamInboundHandler() {
+											@Override
+											protected void channelRead(ChannelHandlerContext ctx, Http3UnknownFrame frame) {
+												System.out.println("Unknown frame received: content = " + new String(ByteBufUtil.getBytes(frame.content())));
+
+												super.channelRead(ctx, frame);
+											}
 
 											@Override
 											protected void channelRead(
 													ChannelHandlerContext ctx, Http3HeadersFrame frame) {
-												System.out.println("Received headers " + frame.headers());
+												System.out.println("Headers received: headers = " + frame.headers());
+
 												if (frame.headers().contains(":protocol", "webtransport")) {
-													System.out.println("WebTransport accepted");
+													System.out.println("WebTransport stream created: streamId = " + ch.streamId());
+
 													Http3HeadersFrame headersFrame = new DefaultHttp3HeadersFrame();
 													headersFrame.headers().secWebtransportHttp3Draft("draft02");
 													headersFrame.headers().status("200");
@@ -173,7 +188,9 @@ public class WebTransportTest {
 										ch.pipeline().addLast(new SimpleChannelInboundHandler<WebTransportBidirectionalFrame>() {
 											@Override
 											protected void channelRead0(ChannelHandlerContext channelHandlerContext, WebTransportBidirectionalFrame frame) throws Exception {
-												System.out.println("bidirectional stream read: payload = " + Arrays.toString(frame.getPayload()));
+												System.out.println("WebTransport stream packet received: payload = " + Arrays.toString(frame.getPayload()));
+
+												messages.add("packet received: " + new String(frame.getPayload(), StandardCharsets.UTF_8));
 											}
 										});
 									}
@@ -184,7 +201,14 @@ public class WebTransportTest {
 		Channel channel = bs.group(eventLoopGroup)
 				.channel(NioDatagramChannel.class)
 				.handler(codec)
-				.bind(new InetSocketAddress(PORT)).sync().channel();
+				.bind(new InetSocketAddress(4433)).sync().channel();
+	}
+
+	private static SelfSignedCertificate createSelfSignedCertificateForLocalHost() throws CertificateException {
+		Date now = new Date();
+		Date oneDayLater = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+		SelfSignedCertificate selfSignedCertificate = new SelfSignedCertificate(now, oneDayLater, "EC", 256);
+		return selfSignedCertificate;
 	}
 
 	private static String toPublicKeyHashAsBase64(X509Certificate certificate) {
