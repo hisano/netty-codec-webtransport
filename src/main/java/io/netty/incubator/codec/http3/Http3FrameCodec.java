@@ -46,6 +46,7 @@ import static io.netty.incubator.codec.http3.Http3CodecUtils.HTTP3_MAX_PUSH_ID_F
 import static io.netty.incubator.codec.http3.Http3CodecUtils.HTTP3_PUSH_PROMISE_FRAME_TYPE;
 import static io.netty.incubator.codec.http3.Http3CodecUtils.HTTP3_SETTINGS_FRAME_MAX_LEN;
 import static io.netty.incubator.codec.http3.Http3CodecUtils.HTTP3_SETTINGS_FRAME_TYPE;
+import static io.netty.incubator.codec.http3.Http3CodecUtils.WEBTRANSPORT_BIDIRECTIONAL_FRAME_TYPE;
 import static io.netty.incubator.codec.http3.Http3CodecUtils.numBytesForVariableLengthInteger;
 import static io.netty.incubator.codec.http3.Http3CodecUtils.readVariableLengthInteger;
 import static io.netty.incubator.codec.http3.Http3CodecUtils.writeVariableLengthInteger;
@@ -71,6 +72,8 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
     private ReadResumptionListener readResumptionListener;
     private WriteResumptionListener writeResumptionListener;
 
+    private WebTransportBidirectionalFrame _firstBidirectionalFrame;
+
     static Http3FrameCodecFactory newFactory(QpackDecoder qpackDecoder,
                                              long maxHeaderListSize, QpackEncoder qpackEncoder) {
         checkNotNull(qpackEncoder, "qpackEncoder");
@@ -79,6 +82,12 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
         // QPACK decoder and encoder are shared between streams in a connection.
         return (validator, encodeState, decodeState) -> new Http3FrameCodec(validator, qpackDecoder,
                 maxHeaderListSize, qpackEncoder, encodeState, decodeState);
+    }
+
+    private static byte[] readBytes(ByteBuf buf) {
+        byte[] bytes = new byte[buf.readableBytes()];
+        buf.readBytes(bytes);
+        return bytes;
     }
 
     Http3FrameCodec(Http3FrameTypeValidator validator, QpackDecoder qpackDecoder,
@@ -159,6 +168,12 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
             in.skipBytes(in.readableBytes());
             return;
         }
+
+        if (_firstBidirectionalFrame != null) {
+            out.add(new WebTransportBidirectionalFrame(_firstBidirectionalFrame.getChannel(), _firstBidirectionalFrame.getSessionId(), _firstBidirectionalFrame.getStreamId(), readBytes(in)));
+            return;
+        }
+
         if (type == -1) {
             int typeLen = numBytesForVariableLengthInteger(in.getByte(in.readerIndex()));
             if (in.readableBytes() < typeLen) {
@@ -184,6 +199,7 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
                 return;
             }
         }
+        // payLoadLength = sessionId when WebTransport
         if (payLoadLength == -1) {
             int payloadLen = numBytesForVariableLengthInteger(in.getByte(in.readerIndex()));
             assert payloadLen <= 8;
@@ -324,6 +340,11 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
                 }
                 int pidLen = numBytesForVariableLengthInteger(in.getByte(in.readerIndex()));
                 out.add(new DefaultHttp3MaxPushIdFrame(readVariableLengthInteger(in, pidLen)));
+                return payLoadLength;
+            case WEBTRANSPORT_BIDIRECTIONAL_FRAME_TYPE:
+                long sessionId = payLoadLength;
+                long streamId = ((QuicStreamChannel)ctx.channel()).streamId();
+                _firstBidirectionalFrame = new WebTransportBidirectionalFrame((QuicStreamChannel) ctx.channel(), sessionId, streamId, new byte[0]);
                 return payLoadLength;
             default:
                 if (!Http3CodecUtils.isReservedFrameType(longType)) {

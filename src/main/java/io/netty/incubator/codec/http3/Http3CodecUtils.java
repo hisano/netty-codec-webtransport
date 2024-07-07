@@ -46,6 +46,7 @@ final class Http3CodecUtils {
     static final int HTTP3_PUSH_PROMISE_FRAME_TYPE = 0x5;
     static final int HTTP3_GO_AWAY_FRAME_TYPE = 0x7;
     static final int HTTP3_MAX_PUSH_ID_FRAME_TYPE = 0xd;
+    static final int WEBTRANSPORT_BIDIRECTIONAL_FRAME_TYPE = 0x41;
 
     static final int HTTP3_CANCEL_PUSH_FRAME_MAX_LEN = 8;
     static final int HTTP3_SETTINGS_FRAME_MAX_LEN = 256;

@@ -32,6 +32,12 @@ class Http3FrameTypeInboundValidationHandler<T extends Http3Frame> extends Chann
 
     @Override
     public final void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        // TODO refactoring
+        if (msg instanceof WebTransportBidirectionalFrame) {
+            super.channelRead(ctx, msg);
+            return;
+        }
+
         final T frame = validateFrameRead(frameType, msg);
         if (frame != null) {
             channelRead(ctx, frame);

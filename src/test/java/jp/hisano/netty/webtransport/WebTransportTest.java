@@ -12,6 +12,7 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
@@ -23,6 +24,8 @@ import io.netty.incubator.codec.http3.Http3DataFrame;
 import io.netty.incubator.codec.http3.Http3HeadersFrame;
 import io.netty.incubator.codec.http3.Http3RequestStreamInboundHandler;
 import io.netty.incubator.codec.http3.Http3ServerConnectionHandler;
+import io.netty.incubator.codec.http3.Http3UnknownFrame;
+import io.netty.incubator.codec.http3.WebTransportBidirectionalFrame;
 import io.netty.incubator.codec.quic.InsecureQuicTokenHandler;
 import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.incubator.codec.quic.QuicSslContext;
@@ -165,6 +168,12 @@ public class WebTransportTest {
 												ctx.writeAndFlush(new DefaultHttp3DataFrame(
 																Unpooled.wrappedBuffer(replacedContentBytes)))
 														.addListener(QuicStreamChannel.SHUTDOWN_OUTPUT);
+											}
+										});
+										ch.pipeline().addLast(new SimpleChannelInboundHandler<WebTransportBidirectionalFrame>() {
+											@Override
+											protected void channelRead0(ChannelHandlerContext channelHandlerContext, WebTransportBidirectionalFrame frame) throws Exception {
+												System.out.println("bidirectional stream read: payload = " + Arrays.toString(frame.getPayload()));
 											}
 										});
 									}
