@@ -154,6 +154,12 @@ public final class DefaultHttp3Headers
     }
 
     @Override
+    public Http3Headers secWebtransportHttp3Draft(CharSequence value) {
+        set(PseudoHeaderName.SEC_WEBTRANSPORT_HTTP3_DRAFT.value(), value);
+        return this;
+    }
+
+    @Override
     public CharSequence method() {
         return get(PseudoHeaderName.METHOD.value());
     }

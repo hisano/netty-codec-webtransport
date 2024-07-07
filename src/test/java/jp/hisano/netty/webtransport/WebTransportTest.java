@@ -131,6 +131,7 @@ public class WebTransportTest {
 												if (frame.headers().contains(":protocol", "webtransport")) {
 													System.out.println("WebTransport accepted");
 													Http3HeadersFrame headersFrame = new DefaultHttp3HeadersFrame();
+													headersFrame.headers().secWebtransportHttp3Draft("draft02");
 													headersFrame.headers().status("200");
 													ctx.writeAndFlush(headersFrame);
 												} else {

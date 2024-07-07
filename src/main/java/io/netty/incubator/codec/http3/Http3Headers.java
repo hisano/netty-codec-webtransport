@@ -51,7 +51,9 @@ public interface Http3Headers extends Headers<CharSequence, CharSequence, Http3H
         /**
          * {@code :status}.
          */
-        STATUS(":status", false);
+        STATUS(":status", false),
+
+        SEC_WEBTRANSPORT_HTTP3_DRAFT("sec-webtransport-http3-draft", false);
 
         private static final char PSEUDO_HEADER_PREFIX = ':';
         private static final byte PSEUDO_HEADER_PREFIX_BYTE = (byte) PSEUDO_HEADER_PREFIX;
@@ -176,6 +178,8 @@ public interface Http3Headers extends Headers<CharSequence, CharSequence, Http3H
      * @return      this instance itself.
      */
     Http3Headers status(CharSequence value);
+
+    Http3Headers secWebtransportHttp3Draft(CharSequence value);
 
     /**
      * Gets the {@link PseudoHeaderName#METHOD} header or {@code null} if there is no such header
