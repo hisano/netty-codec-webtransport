@@ -43,11 +43,11 @@ Hello World!
                 // const writer = transport.datagrams.writable.getWriter();
                 // console.log('Writer created.');
 
-                const encoder = new TextEncoder();
-                const data = encoder.encode('abc');
-
-                await writer.write(data);
+                await writer.write(new TextEncoder().encode('abc'));
                 console.log('Data sent: abc');
+
+                await writer.write(new TextEncoder().encode('def'));
+                console.log('Data sent: def');
 
                 await writer.close();
                 console.log('Stream closed.');
