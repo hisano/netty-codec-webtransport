@@ -28,7 +28,21 @@ Hello World!
                 await transport.ready;
                 console.log('WebTransport connection established.');
 
-                const writer = transport.sendDatagrams().writable.getWriter();
+                // const stream = await transport.createUnidirectionalStream();
+                // console.log('Stream created.');
+                //
+                // const writer = stream.writable.getWriter();
+                // console.log('Writer created.');
+
+                const stream = await transport.createBidirectionalStream();
+                console.log('Stream created.');
+
+                const writer = stream.writable.getWriter();
+                console.log('Writer created.');
+
+                // const writer = transport.datagrams.writable.getWriter();
+                // console.log('Writer created.');
+
                 const encoder = new TextEncoder();
                 const data = encoder.encode('abc');
 
