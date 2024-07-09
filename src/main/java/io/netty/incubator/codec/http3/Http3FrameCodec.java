@@ -28,6 +28,8 @@ import io.netty.incubator.codec.quic.QuicStreamFrame;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
+import jp.hisano.netty.webtransport.WebTransportStream;
+import jp.hisano.netty.webtransport.WebTransportStreamFrame;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.SocketAddress;
@@ -72,7 +74,7 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
     private ReadResumptionListener readResumptionListener;
     private WriteResumptionListener writeResumptionListener;
 
-    private WebTransportBidirectionalFrame _firstBidirectionalFrame;
+    private WebTransportStream _webTransportStream;
 
     static Http3FrameCodecFactory newFactory(QpackDecoder qpackDecoder,
                                              long maxHeaderListSize, QpackEncoder qpackEncoder) {
@@ -169,8 +171,8 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
             return;
         }
 
-        if (_firstBidirectionalFrame != null) {
-            out.add(new WebTransportBidirectionalFrame(_firstBidirectionalFrame.getChannel(), _firstBidirectionalFrame.getSessionId(), _firstBidirectionalFrame.getStreamId(), readBytes(in)));
+        if (_webTransportStream != null) {
+            out.add(new WebTransportStreamFrame(in.readRetainedSlice(in.readableBytes())));
             return;
         }
 
@@ -344,7 +346,7 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
             case WEBTRANSPORT_BIDIRECTIONAL_FRAME_TYPE:
                 long sessionId = payLoadLength;
                 long streamId = ((QuicStreamChannel)ctx.channel()).streamId();
-                _firstBidirectionalFrame = new WebTransportBidirectionalFrame((QuicStreamChannel) ctx.channel(), sessionId, streamId, new byte[0]);
+                _webTransportStream = new WebTransportStream((QuicStreamChannel) ctx.channel(), sessionId, streamId);
                 return payLoadLength;
             default:
                 if (!Http3CodecUtils.isReservedFrameType(longType)) {

@@ -1,18 +1,16 @@
-package io.netty.incubator.codec.http3;
+package jp.hisano.netty.webtransport;
 
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 
-public final class WebTransportBidirectionalFrame {
+public final class WebTransportStream {
 	private final QuicStreamChannel channel;
 	private final long sessionId;
 	private final long streamId;
-	private final byte[] payload;
 
-	WebTransportBidirectionalFrame(QuicStreamChannel channel, long sessionId, long streamId, byte[] payload) {
+	public WebTransportStream(QuicStreamChannel channel, long sessionId, long streamId) {
 		this.channel = channel;
 		this.sessionId = sessionId;
 		this.streamId = streamId;
-		this.payload = payload;
 	}
 
 	public QuicStreamChannel getChannel() {
@@ -25,9 +23,5 @@ public final class WebTransportBidirectionalFrame {
 
 	public long getStreamId() {
 		return streamId;
-	}
-
-	public byte[] getPayload() {
-		return payload;
 	}
 }

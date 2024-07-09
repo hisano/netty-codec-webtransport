@@ -18,6 +18,7 @@ package io.netty.incubator.codec.http3;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.internal.ObjectUtil;
+import jp.hisano.netty.webtransport.WebTransportStreamFrame;
 
 import static io.netty.incubator.codec.http3.Http3FrameValidationUtils.frameTypeUnexpected;
 import static io.netty.incubator.codec.http3.Http3FrameValidationUtils.validateFrameRead;
@@ -33,7 +34,7 @@ class Http3FrameTypeInboundValidationHandler<T extends Http3Frame> extends Chann
     @Override
     public final void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         // TODO refactoring
-        if (msg instanceof WebTransportBidirectionalFrame) {
+        if (msg instanceof WebTransportStreamFrame) {
             super.channelRead(ctx, msg);
             return;
         }
