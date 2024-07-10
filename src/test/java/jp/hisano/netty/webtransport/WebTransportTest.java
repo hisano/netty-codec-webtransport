@@ -53,18 +53,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class WebTransportTest {
 	@Test
 	public void testBidirectionalStream() throws Exception {
-		BlockingQueue<String> messages = new LinkedBlockingQueue<>();
+		BlockingQueue<String> serverMessages = new LinkedBlockingQueue<>();
+		BlockingQueue<String> clientMessages = new LinkedBlockingQueue<>();
 
 		SelfSignedCertificate selfSignedCertificate = createSelfSignedCertificateForLocalHost();
 
 		NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
 		try {
-			startServer(messages, selfSignedCertificate, eventLoopGroup);
-			startClient(messages, selfSignedCertificate);
+			startServer(serverMessages, selfSignedCertificate, eventLoopGroup);
+			startClient(clientMessages, selfSignedCertificate);
 
-			assertEquals("packet received: abc", messages.poll());
-			assertEquals("packet received: def", messages.poll());
-			assertEquals("stream closed", messages.poll());
+			assertEquals("packet received from client: abc", serverMessages.poll());
+			assertEquals("packet received from server: abc", clientMessages.poll());
+			assertEquals("packet received from client: def", serverMessages.poll());
+			assertEquals("packet received from server: def", clientMessages.poll());
+			assertEquals("stream closed", clientMessages.poll());
 		} finally {
 			eventLoopGroup.shutdownGracefully();
 		}
@@ -86,7 +89,13 @@ public class WebTransportTest {
 
 			Page page = browser.newPage();
 			page.onConsoleMessage(message -> {
-				System.out.println("[DevTools Console] " + message.text());
+				String text = message.text();
+				System.out.println("[DevTools Console] " + text);
+
+				if (text.startsWith("Data received: ")) {
+					String payload = text.substring("Data received: ".length());
+					messages.add("packet received from server: " + payload);
+				}
 				if ("Stream closed.".equals(message.text())) {
 					messages.add("stream closed");
 					waiter.countDown();
@@ -163,7 +172,16 @@ public class WebTransportTest {
 
 												System.out.println("WebTransport stream packet received: payload = " + Arrays.toString(payload));
 
-												messages.add("packet received: " + new String(payload, StandardCharsets.UTF_8));
+												messages.add("packet received from client: " + new String(payload, StandardCharsets.UTF_8));
+
+												channelHandlerContext.writeAndFlush(new WebTransportStreamFrame(Unpooled.wrappedBuffer(payload))).addListener(futue -> {
+													if (futue.isSuccess()) {
+														System.out.println("WebTransport stream packet sent: payload = " + Arrays.toString(payload));
+													} else {
+														System.out.println("Sending WebTransport stream packet failed: payload = " + Arrays.toString(payload));
+														futue.cause().printStackTrace();
+													}
+												});
 											}
 										});
 									}

@@ -2,10 +2,17 @@ package jp.hisano.netty.webtransport;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.DefaultByteBufHolder;
+import io.netty.incubator.codec.http3.Http3ControlStreamFrame;
+import io.netty.incubator.codec.http3.Http3RequestStreamFrame;
 
-public final class WebTransportStreamFrame extends DefaultByteBufHolder {
+public final class WebTransportStreamFrame extends DefaultByteBufHolder implements Http3ControlStreamFrame, Http3RequestStreamFrame {
 	public WebTransportStreamFrame(ByteBuf data) {
 		super(data);
+	}
+
+	@Override
+	public long type() {
+		return 0x54;
 	}
 
 	@Override

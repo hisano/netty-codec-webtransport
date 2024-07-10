@@ -40,14 +40,29 @@ Hello World!
                 const writer = stream.writable.getWriter();
                 console.log('Writer created.');
 
+                const reader = stream.readable.getReader();
+                console.log('Reader created.');
+
                 // const writer = transport.datagrams.writable.getWriter();
                 // console.log('Writer created.');
 
                 await writer.write(new TextEncoder().encode('abc'));
                 console.log('Data sent: abc');
 
+                {
+                    const { value, done } = await reader.read();
+                    const data = new TextDecoder().decode(value);
+                    console.log('Data received: ' + data)
+                }
+
                 await writer.write(new TextEncoder().encode('def'));
                 console.log('Data sent: def');
+
+                {
+                    const { value, done } = await reader.read();
+                    const data = new TextDecoder().decode(value);
+                    console.log('Data received: ' + data)
+                }
 
                 await writer.close();
                 console.log('Stream closed.');

@@ -479,6 +479,8 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
                 writeMaxPushIdFrame(ctx, (Http3MaxPushIdFrame) msg, promise);
             } else if (msg instanceof Http3UnknownFrame) {
                 writeUnknownFrame(ctx, (Http3UnknownFrame) msg, promise);
+            } else if (msg instanceof WebTransportStreamFrame) {
+                writeWebTransportStreamFrame(ctx, (WebTransportStreamFrame) msg, promise);
             } else {
                 unsupported(promise);
             }
@@ -613,6 +615,10 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
         writeVariableLengthInteger(out, frame.content().readableBytes());
         ByteBuf content = frame.content().retain();
         ctx.write(Unpooled.wrappedUnmodifiableBuffer(out, content), promise);
+    }
+
+    private void writeWebTransportStreamFrame(ChannelHandlerContext ctx, WebTransportStreamFrame frame, ChannelPromise promise) {
+        ctx.write(frame.content().retain(), promise);
     }
 
     private void initReadResumptionListenerIfRequired(ChannelHandlerContext ctx) {
