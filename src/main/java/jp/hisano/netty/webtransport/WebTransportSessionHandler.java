@@ -10,6 +10,8 @@ import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.util.ReferenceCountUtil;
 
 public final class WebTransportSessionHandler extends ChannelInboundHandlerAdapter {
+	private static final long SETTINGS_QPACK_MAX_TABLE_CAPACITY = 0x01L;
+	private static final long SETTINGS_QPACK_BLOCKED_STREAMS = 0x07L;
 	private static final long SETTINGS_ENABLE_CONNECT_PROTOCOL = 0x08L;
 	private static final long SETTINGS_H3_DATAGRAM = 0x33L;
 	private static final long SETTINGS_ENABLE_WEBTRANSPORT = 0x2b60_3742L;
@@ -17,6 +19,8 @@ public final class WebTransportSessionHandler extends ChannelInboundHandlerAdapt
 
 	public static Http3SettingsFrame createSettingsFrameFromServer() {
 		DefaultHttp3SettingsFrame settingsFrame = new DefaultHttp3SettingsFrame();
+		settingsFrame.put(SETTINGS_QPACK_MAX_TABLE_CAPACITY, 0L);
+		settingsFrame.put(SETTINGS_QPACK_BLOCKED_STREAMS, 0L);
 		settingsFrame.put(SETTINGS_ENABLE_CONNECT_PROTOCOL, 1L);
 		settingsFrame.put(SETTINGS_H3_DATAGRAM, 1L);
 		settingsFrame.put(SETTINGS_ENABLE_WEBTRANSPORT, 1L);
