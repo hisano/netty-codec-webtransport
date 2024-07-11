@@ -58,6 +58,8 @@ final class Http3CodecUtils {
     static final int HTTP3_QPACK_ENCODER_STREAM_TYPE = 0x02;
     static final int HTTP3_QPACK_DECODER_STREAM_TYPE = 0x03;
 
+    static final int WEBTRANSPORT_STREAM_TYPE = 0x54;
+
     private Http3CodecUtils() { }
 
     static long checkIsReservedFrameType(long type) {

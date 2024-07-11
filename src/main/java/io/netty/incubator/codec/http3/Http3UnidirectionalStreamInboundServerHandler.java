@@ -31,9 +31,9 @@ final class Http3UnidirectionalStreamInboundServerHandler extends Http3Unidirect
                                                   Http3ControlStreamOutboundHandler remoteControlStreamHandler,
                                                   @Nullable LongFunction<ChannelHandler> unknownStreamHandlerFactory,
                                                   Supplier<ChannelHandler> qpackEncoderHandlerFactory,
-                                                  Supplier<ChannelHandler> qpackDecoderHandlerFactory) {
+                                                  Supplier<ChannelHandler> qpackDecoderHandlerFactory, ChannelHandler requestStreamHandler) {
         super(codecFactory, localControlStreamHandler, remoteControlStreamHandler, unknownStreamHandlerFactory,
-                qpackEncoderHandlerFactory, qpackDecoderHandlerFactory);
+                qpackEncoderHandlerFactory, qpackDecoderHandlerFactory, requestStreamHandler);
     }
 
     @Override

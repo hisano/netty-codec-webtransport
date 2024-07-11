@@ -88,6 +88,7 @@ public final class Http3ServerConnectionHandler extends Http3ConnectionHandler {
                         localControlStreamHandler, remoteControlStreamHandler,
                         unknownInboundStreamHandlerFactory,
                         () -> new QpackEncoderHandler(maxTableCapacity, qpackDecoder),
-                        () -> new QpackDecoderHandler(qpackEncoder)));
+                        () -> new QpackDecoderHandler(qpackEncoder),
+                        requestStreamHandler));
     }
 }

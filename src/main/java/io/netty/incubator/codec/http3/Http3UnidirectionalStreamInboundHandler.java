@@ -20,10 +20,12 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.incubator.codec.http3.Http3FrameCodec.Http3FrameCodecFactory;
 import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
+import jp.hisano.netty.webtransport.WebTransportStreamFrame;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -34,6 +36,7 @@ import static io.netty.incubator.codec.http3.Http3CodecUtils.HTTP3_CONTROL_STREA
 import static io.netty.incubator.codec.http3.Http3CodecUtils.HTTP3_PUSH_STREAM_TYPE;
 import static io.netty.incubator.codec.http3.Http3CodecUtils.HTTP3_QPACK_DECODER_STREAM_TYPE;
 import static io.netty.incubator.codec.http3.Http3CodecUtils.HTTP3_QPACK_ENCODER_STREAM_TYPE;
+import static io.netty.incubator.codec.http3.Http3CodecUtils.WEBTRANSPORT_STREAM_TYPE;
 import static io.netty.incubator.codec.http3.Http3RequestStreamCodecState.NO_STATE;
 
 /**
@@ -52,13 +55,15 @@ abstract class Http3UnidirectionalStreamInboundHandler extends ByteToMessageDeco
     final Supplier<ChannelHandler> qpackEncoderHandlerFactory;
     final Supplier<ChannelHandler> qpackDecoderHandlerFactory;
     final LongFunction<ChannelHandler> unknownStreamHandlerFactory;
+    private final ChannelHandler requestStreamHandler;
 
     Http3UnidirectionalStreamInboundHandler(Http3FrameCodecFactory codecFactory,
                                             Http3ControlStreamInboundHandler localControlStreamHandler,
                                             Http3ControlStreamOutboundHandler remoteControlStreamHandler,
                                             @Nullable LongFunction<ChannelHandler> unknownStreamHandlerFactory,
                                             Supplier<ChannelHandler> qpackEncoderHandlerFactory,
-                                            Supplier<ChannelHandler> qpackDecoderHandlerFactory) {
+                                            Supplier<ChannelHandler> qpackDecoderHandlerFactory,
+                                            @Nullable ChannelHandler requestStreamHandler) {
         this.codecFactory = codecFactory;
         this.localControlStreamHandler = localControlStreamHandler;
         this.remoteControlStreamHandler = remoteControlStreamHandler;
@@ -69,6 +74,7 @@ abstract class Http3UnidirectionalStreamInboundHandler extends ByteToMessageDeco
             unknownStreamHandlerFactory = type -> ReleaseHandler.INSTANCE;
         }
         this.unknownStreamHandlerFactory = unknownStreamHandlerFactory;
+        this.requestStreamHandler = requestStreamHandler;
     }
 
     @Override
@@ -100,6 +106,22 @@ abstract class Http3UnidirectionalStreamInboundHandler extends ByteToMessageDeco
             case HTTP3_QPACK_DECODER_STREAM_TYPE:
                 // See https://quicwg.org/base-drafts/draft-ietf-quic-qpack.html#enc-dec-stream-def
                 initQpackDecoderStream(ctx);
+                break;
+            case WEBTRANSPORT_STREAM_TYPE:
+                int sessionIdLen = Http3CodecUtils.numBytesForVariableLengthInteger(in.getByte(in.readerIndex()));
+                if (in.readableBytes() < sessionIdLen) {
+                    return;
+                }
+                long sessionId = Http3CodecUtils.readVariableLengthInteger(in, sessionIdLen);
+                ctx.pipeline().replace(this, null, new SimpleChannelInboundHandler<ByteBuf>() {
+                    @Override
+                    protected void channelRead0(ChannelHandlerContext channelHandlerContext, ByteBuf byteBuf) throws Exception {
+                        ctx.fireChannelRead(new WebTransportStreamFrame(byteBuf.retain()));
+                    }
+                });
+                if (requestStreamHandler != null) {
+                    ctx.pipeline().addLast(requestStreamHandler);
+                }
                 break;
             default:
                 initUnknownStream(ctx, type);

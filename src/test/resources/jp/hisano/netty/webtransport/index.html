@@ -28,44 +28,52 @@ Hello World!
                 await transport.ready;
                 console.log('WebTransport connection established.');
 
-                // const stream = await transport.createUnidirectionalStream();
-                // console.log('Stream created.');
-                //
-                // const writer = stream.writable.getWriter();
-                // console.log('Writer created.');
+                if ($IS_UNIDIRECTIONAL_STREAM) {
+                    const stream = await transport.createUnidirectionalStream();
+                    console.log('Stream created.');
 
-                const stream = await transport.createBidirectionalStream();
-                console.log('Stream created.');
+                    const writer = stream.getWriter();
+                    console.log('Writer created.');
 
-                const writer = stream.writable.getWriter();
-                console.log('Writer created.');
+                    await writer.write(new TextEncoder().encode('abc'));
+                    console.log('Data sent: abc');
 
-                const reader = stream.readable.getReader();
-                console.log('Reader created.');
+                    await writer.write(new TextEncoder().encode('def'));
+                    console.log('Data sent: def');
 
-                // const writer = transport.datagrams.writable.getWriter();
-                // console.log('Writer created.');
+                    await writer.close();
+                    console.log('Stream closed.');
+                } else {
+                    const stream = await transport.createBidirectionalStream();
+                    console.log('Stream created.');
 
-                await writer.write(new TextEncoder().encode('abc'));
-                console.log('Data sent: abc');
+                    const writer = stream.writable.getWriter();
+                    console.log('Writer created.');
 
-                {
-                    const { value, done } = await reader.read();
-                    const data = new TextDecoder().decode(value);
-                    console.log('Data received: ' + data)
+                    const reader = stream.readable.getReader();
+                    console.log('Reader created.');
+
+                    await writer.write(new TextEncoder().encode('abc'));
+                    console.log('Data sent: abc');
+
+                    {
+                        const { value, done } = await reader.read();
+                        const data = new TextDecoder().decode(value);
+                        console.log('Data received: ' + data)
+                    }
+
+                    await writer.write(new TextEncoder().encode('def'));
+                    console.log('Data sent: def');
+
+                    {
+                        const { value, done } = await reader.read();
+                        const data = new TextDecoder().decode(value);
+                        console.log('Data received: ' + data)
+                    }
+
+                    await writer.close();
+                    console.log('Stream closed.');
                 }
-
-                await writer.write(new TextEncoder().encode('def'));
-                console.log('Data sent: def');
-
-                {
-                    const { value, done } = await reader.read();
-                    const data = new TextDecoder().decode(value);
-                    console.log('Data received: ' + data)
-                }
-
-                await writer.close();
-                console.log('Stream closed.');
             } catch (error) {
                 console.error('Failed to send data via WebTransport:', error);
             }

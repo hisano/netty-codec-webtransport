@@ -52,6 +52,26 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class WebTransportTest {
 	@Test
+	public void testUnidirectionalStream() throws Exception {
+		BlockingQueue<String> serverMessages = new LinkedBlockingQueue<>();
+		BlockingQueue<String> clientMessages = new LinkedBlockingQueue<>();
+
+		SelfSignedCertificate selfSignedCertificate = createSelfSignedCertificateForLocalHost();
+
+		NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
+		try {
+			startServer(serverMessages, selfSignedCertificate, true, eventLoopGroup);
+			startClient(clientMessages, selfSignedCertificate);
+
+			assertEquals("packet received from client: abc", serverMessages.poll());
+			assertEquals("packet received from client: def", serverMessages.poll());
+			assertEquals("stream closed", clientMessages.poll());
+		} finally {
+			eventLoopGroup.shutdownGracefully();
+		}
+	}
+
+	@Test
 	public void testBidirectionalStream() throws Exception {
 		BlockingQueue<String> serverMessages = new LinkedBlockingQueue<>();
 		BlockingQueue<String> clientMessages = new LinkedBlockingQueue<>();
@@ -60,7 +80,7 @@ public class WebTransportTest {
 
 		NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
 		try {
-			startServer(serverMessages, selfSignedCertificate, eventLoopGroup);
+			startServer(serverMessages, selfSignedCertificate, false, eventLoopGroup);
 			startClient(clientMessages, selfSignedCertificate);
 
 			assertEquals("packet received from client: abc", serverMessages.poll());
@@ -107,7 +127,7 @@ public class WebTransportTest {
 		}
 	}
 
-	private static void startServer(BlockingQueue<String> messages, SelfSignedCertificate selfSignedCertificate, EventLoopGroup eventLoopGroup) throws InterruptedException {
+	private static void startServer(BlockingQueue<String> messages, SelfSignedCertificate selfSignedCertificate, boolean isUnidirectionalStream, EventLoopGroup eventLoopGroup) throws InterruptedException {
 		QuicSslContext sslContext = QuicSslContextBuilder.forServer(selfSignedCertificate.key(), null, selfSignedCertificate.cert())
 				.applicationProtocols(Http3.supportedApplicationProtocols()).build();
 		ChannelHandler codec = Http3.newQuicServerCodecBuilder()
@@ -117,7 +137,9 @@ public class WebTransportTest {
 				.initialMaxData(10000000)
 				.initialMaxStreamDataBidirectionalLocal(1000000)
 				.initialMaxStreamDataBidirectionalRemote(1000000)
+				.initialMaxStreamDataUnidirectional(1000000)
 				.initialMaxStreamsBidirectional(100)
+				.initialMaxStreamsUnidirectional(100)
 				.tokenHandler(InsecureQuicTokenHandler.INSTANCE)
 				.handler(new ChannelInitializer<QuicChannel>() {
 					@Override
@@ -133,6 +155,8 @@ public class WebTransportTest {
 										System.out.println("Stream created: streamId = " + ch.streamId());
 
 										ch.pipeline().addLast(new Http3RequestStreamInboundHandler() {
+											boolean isHttpRequest;
+
 											@Override
 											protected void channelRead(ChannelHandlerContext ctx, Http3UnknownFrame frame) {
 												System.out.println("Unknown frame received: content = " + new String(ByteBufUtil.getBytes(frame.content())));
@@ -149,6 +173,8 @@ public class WebTransportTest {
 													ctx.fireChannelRead(frame);
 													return;
 												}
+
+												isHttpRequest = true;
 											}
 
 											@Override
@@ -161,7 +187,12 @@ public class WebTransportTest {
 
 											@Override
 											protected void channelInputClosed(ChannelHandlerContext ctx) {
-												sendHtmlContent(selfSignedCertificate, ctx);
+												if (!isHttpRequest) {
+													((QuicStreamChannel) ctx.channel()).shutdownOutput();
+													return;
+												}
+
+												sendHtmlContent(selfSignedCertificate, isUnidirectionalStream, ctx);
 											}
 										});
 										ch.pipeline().addLast(new WebTransportSessionHandler());
@@ -173,6 +204,10 @@ public class WebTransportTest {
 												System.out.println("WebTransport stream packet received: payload = " + Arrays.toString(payload));
 
 												messages.add("packet received from client: " + new String(payload, StandardCharsets.UTF_8));
+
+												if (isUnidirectionalStream) {
+													return;
+												}
 
 												channelHandlerContext.writeAndFlush(new WebTransportStreamFrame(Unpooled.wrappedBuffer(payload))).addListener(futue -> {
 													if (futue.isSuccess()) {
@@ -195,7 +230,7 @@ public class WebTransportTest {
 				.bind(new InetSocketAddress(4433)).sync().channel();
 	}
 
-	private static void sendHtmlContent(SelfSignedCertificate selfSignedCertificate, ChannelHandlerContext ctx) {
+	private static void sendHtmlContent(SelfSignedCertificate selfSignedCertificate, boolean isUnidiretionalStream, ChannelHandlerContext ctx) {
 		String content;
 		try {
 			content = new String(Resources.toByteArray(Resources.getResource(WebTransportTest.class, "index.html")), StandardCharsets.UTF_8);
@@ -203,6 +238,7 @@ public class WebTransportTest {
 			throw new IllegalStateException(e);
 		}
 		String replacedContent = content.replace("$CERTIFICATE_HASH", toPublicKeyHashAsBase64(selfSignedCertificate.cert()));
+		replacedContent = replacedContent.replace("$IS_UNIDIRECTIONAL_STREAM", "" + isUnidiretionalStream);
 		byte[] replacedContentBytes = replacedContent.getBytes(StandardCharsets.UTF_8);
 
 		Http3HeadersFrame headersFrame = new DefaultHttp3HeadersFrame();
