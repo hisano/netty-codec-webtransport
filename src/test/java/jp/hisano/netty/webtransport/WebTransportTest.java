@@ -79,7 +79,6 @@ public class WebTransportTest {
 		try (Playwright playwright = Playwright.create()) {
 			BrowserType browserType = playwright.chromium();
 			Browser browser = browserType.launch(new BrowserType.LaunchOptions()
-					.setHeadless(false)
 					.setArgs(Arrays.asList(
 							"--test-type",
 							"--enable-quic",
