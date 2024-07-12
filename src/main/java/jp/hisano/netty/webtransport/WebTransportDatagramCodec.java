@@ -4,7 +4,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
-import io.netty.incubator.codec.quic.QuicServerCodecBuilder;
+import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.util.ReferenceCountUtil;
 
 import static io.netty.incubator.codec.http3.Http3CodecUtils.numBytesForVariableLengthInteger;
@@ -18,10 +18,13 @@ public final class WebTransportDatagramCodec extends ChannelDuplexHandler {
 			ByteBuf in = (ByteBuf) msg;
 
 			int sessionIdLength = numBytesForVariableLengthInteger(in.getByte(in.readerIndex()));
-			long streamId = readVariableLengthInteger(in, sessionIdLength);
+			long sessionId = readVariableLengthInteger(in, sessionIdLength);
 
 			try {
-				ctx.fireChannelRead(new WebTransportStreamFrame(streamId, in.readRetainedSlice(in.readableBytes())));
+				WebTransportSession session = WebTransportSession.toSession((QuicChannel) ctx.channel());
+				if (session != null && session.id() == sessionId) {
+					ctx.fireChannelRead(new WebTransportStreamFrame(sessionId, in.readRetainedSlice(in.readableBytes())));
+				}
 			} finally {
 				ReferenceCountUtil.release(msg);
 			}

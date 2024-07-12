@@ -21,7 +21,11 @@ public class WebTransportStreamCodec extends Http3RequestStreamInboundHandler {
 		Http3HeadersFrame responseFrame = new DefaultHttp3HeadersFrame();
 		responseFrame.headers().status("200");
 		responseFrame.headers().secWebtransportHttp3Draft("draft02");
-		ctx.writeAndFlush(responseFrame);
+		ctx.writeAndFlush(responseFrame).addListener(future -> {
+			if (future.isSuccess()) {
+				new WebTransportSession((QuicStreamChannel) ctx.channel());
+			}
+		});
 	}
 
 	@Override
