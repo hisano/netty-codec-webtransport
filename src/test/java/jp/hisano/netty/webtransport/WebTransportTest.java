@@ -227,14 +227,15 @@ public class WebTransportTest {
 	}
 
 	private static void sendHtmlContent(SelfSignedCertificate selfSignedCertificate, TestType testType, ChannelHandlerContext ctx) {
-		String content;
+		String fileContent;
 		try {
-			content = new String(Resources.toByteArray(Resources.getResource(WebTransportTest.class, "index.html")), StandardCharsets.UTF_8);
+			fileContent = new String(Resources.toByteArray(Resources.getResource(WebTransportTest.class, "index.html")), StandardCharsets.UTF_8);
 		} catch (IOException e) {
 			throw new IllegalStateException(e);
 		}
-		String replacedContent = content.replace("$CERTIFICATE_HASH", toPublicKeyHashAsBase64(selfSignedCertificate.cert()));
-		replacedContent = replacedContent.replace("$TEST_TYPE", "" + testType);
+		String replacedContent = fileContent
+				.replace("$CERTIFICATE_HASH", toPublicKeyHashAsBase64(selfSignedCertificate.cert()))
+				.replace("$TEST_TYPE", "" + testType);
 		byte[] replacedContentBytes = replacedContent.getBytes(StandardCharsets.UTF_8);
 
 		Http3HeadersFrame headersFrame = new DefaultHttp3HeadersFrame();
@@ -243,16 +244,14 @@ public class WebTransportTest {
 		headersFrame.headers().add("content-type", "text/html");
 		headersFrame.headers().addInt("content-length", replacedContentBytes.length);
 		ctx.write(headersFrame);
-		ctx.writeAndFlush(new DefaultHttp3DataFrame(
-						Unpooled.wrappedBuffer(replacedContentBytes)))
-				.addListener(QuicStreamChannel.SHUTDOWN_OUTPUT);
+
+		ctx.writeAndFlush(new DefaultHttp3DataFrame(Unpooled.wrappedBuffer(replacedContentBytes))).addListener(QuicStreamChannel.SHUTDOWN_OUTPUT);
 	}
 
 	private static SelfSignedCertificate createSelfSignedCertificateForLocalHost() throws CertificateException {
 		Date now = new Date();
 		Date oneDayLater = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-		SelfSignedCertificate selfSignedCertificate = new SelfSignedCertificate(now, oneDayLater, "EC", 256);
-		return selfSignedCertificate;
+		return new SelfSignedCertificate(now, oneDayLater, "EC", 256);
 	}
 
 	private static String toPublicKeyHashAsBase64(X509Certificate certificate) {
