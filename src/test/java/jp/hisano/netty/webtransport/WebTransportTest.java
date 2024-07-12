@@ -34,7 +34,8 @@ import io.netty.incubator.codec.quic.QuicSslContext;
 import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.util.ReferenceCountUtil;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -58,8 +59,9 @@ import static io.netty.incubator.codec.http3.Http3CodecUtils.writeVariableLength
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class WebTransportTest {
-	@Test
-	public void testDatagram() throws Exception {
+	@ParameterizedTest
+	@EnumSource(TestType.class)
+	public void testPackets(TestType testType) throws Exception {
 		BlockingQueue<String> serverMessages = new LinkedBlockingQueue<>();
 		BlockingQueue<String> clientMessages = new LinkedBlockingQueue<>();
 
@@ -67,55 +69,15 @@ public class WebTransportTest {
 
 		NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
 		try {
-			startServer(serverMessages, selfSignedCertificate, TestType.DATAGRAM, eventLoopGroup);
-			startClient(clientMessages, selfSignedCertificate);
-
-			assertEquals("packet received from client: abc", serverMessages.poll());
-			assertEquals("packet received from server: abc", clientMessages.poll());
-			assertEquals("packet received from client: def", serverMessages.poll());
-			assertEquals("packet received from server: def", clientMessages.poll());
-			assertEquals("stream closed", clientMessages.poll());
-		} finally {
-			eventLoopGroup.shutdownGracefully();
-		}
-	}
-
-	@Test
-	public void testUnidirectionalStream() throws Exception {
-		BlockingQueue<String> serverMessages = new LinkedBlockingQueue<>();
-		BlockingQueue<String> clientMessages = new LinkedBlockingQueue<>();
-
-		SelfSignedCertificate selfSignedCertificate = createSelfSignedCertificateForLocalHost();
-
-		NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
-		try {
-			startServer(serverMessages, selfSignedCertificate, TestType.UNIDIRECTIONAL, eventLoopGroup);
+			startServer(serverMessages, selfSignedCertificate, testType, eventLoopGroup);
 			startClient(clientMessages, selfSignedCertificate);
 
 			assertEquals("packet received from client: abc", serverMessages.poll());
 			assertEquals("packet received from client: def", serverMessages.poll());
-			assertEquals("stream closed", clientMessages.poll());
-		} finally {
-			eventLoopGroup.shutdownGracefully();
-		}
-	}
-
-	@Test
-	public void testBidirectionalStream() throws Exception {
-		BlockingQueue<String> serverMessages = new LinkedBlockingQueue<>();
-		BlockingQueue<String> clientMessages = new LinkedBlockingQueue<>();
-
-		SelfSignedCertificate selfSignedCertificate = createSelfSignedCertificateForLocalHost();
-
-		NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
-		try {
-			startServer(serverMessages, selfSignedCertificate, TestType.BIDIRECTIONAL, eventLoopGroup);
-			startClient(clientMessages, selfSignedCertificate);
-
-			assertEquals("packet received from client: abc", serverMessages.poll());
-			assertEquals("packet received from server: abc", clientMessages.poll());
-			assertEquals("packet received from client: def", serverMessages.poll());
-			assertEquals("packet received from server: def", clientMessages.poll());
+			if (testType != TestType.UNIDIRECTIONAL) {
+				assertEquals("packet received from server: abc", clientMessages.poll());
+				assertEquals("packet received from server: def", clientMessages.poll());
+			}
 			assertEquals("stream closed", clientMessages.poll());
 		} finally {
 			eventLoopGroup.shutdownGracefully();
