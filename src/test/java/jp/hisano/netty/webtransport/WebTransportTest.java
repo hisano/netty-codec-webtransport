@@ -10,9 +10,11 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -31,6 +33,7 @@ import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.incubator.codec.quic.QuicSslContext;
 import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
+import io.netty.util.ReferenceCountUtil;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -51,6 +54,7 @@ import java.util.concurrent.TimeUnit;
 
 import static io.netty.incubator.codec.http3.Http3CodecUtils.numBytesForVariableLengthInteger;
 import static io.netty.incubator.codec.http3.Http3CodecUtils.readVariableLengthInteger;
+import static io.netty.incubator.codec.http3.Http3CodecUtils.writeVariableLengthInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class WebTransportTest {
@@ -67,7 +71,10 @@ public class WebTransportTest {
 			startClient(clientMessages, selfSignedCertificate);
 
 			assertEquals("packet received from client: abc", serverMessages.poll());
+			assertEquals("packet received from server: abc", clientMessages.poll());
 			assertEquals("packet received from client: def", serverMessages.poll());
+			assertEquals("packet received from server: def", clientMessages.poll());
+			assertEquals("stream closed", clientMessages.poll());
 		} finally {
 			eventLoopGroup.shutdownGracefully();
 		}
@@ -168,15 +175,35 @@ public class WebTransportTest {
 					protected void initChannel(QuicChannel ch) {
 						System.out.println("Connection created: channelId = " + ch.id());
 
-						ch.pipeline().addLast(new SimpleChannelInboundHandler<ByteBuf>() {
+						ch.pipeline().addLast(new ChannelDuplexHandler() {
 							@Override
-							protected void channelRead0(ChannelHandlerContext ctx, ByteBuf in) throws Exception {
-								int sessionIdLength = numBytesForVariableLengthInteger(in.getByte(in.readerIndex()));
-								if (in.readableBytes() < sessionIdLength) {
-									return;
+							public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+								if (msg instanceof ByteBuf) {
+									ByteBuf in = (ByteBuf) msg;
+									int sessionIdLength = numBytesForVariableLengthInteger(in.getByte(in.readerIndex()));
+									if (in.readableBytes() < sessionIdLength) {
+										return;
+									}
+									long streamId = readVariableLengthInteger(in, sessionIdLength);
+									ctx.fireChannelRead(new WebTransportStreamFrame(streamId, in.readRetainedSlice(in.readableBytes())));
+									ReferenceCountUtil.release(msg);
+								} else {
+									super.channelRead(ctx, msg);
 								}
-								long sessionId = readVariableLengthInteger(in, sessionIdLength);
-								ctx.fireChannelRead(new WebTransportStreamFrame(in.readRetainedSlice(in.readableBytes())));
+							}
+
+							@Override
+							public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+								if (msg instanceof WebTransportStreamFrame) {
+									WebTransportStreamFrame frame = (WebTransportStreamFrame) msg;
+									ByteBuf out = Unpooled.buffer(frame.content().readableBytes() + 8);
+									writeVariableLengthInteger(out, frame.streamId());
+									out.writeBytes(frame.content());
+									ReferenceCountUtil.release(frame);
+									ctx.write(out, promise);
+								} else {
+									super.write(ctx, msg, promise);
+								}
 							}
 						});
 						ch.pipeline().addLast(createWebTransportFrameHandler(messages, testType));
@@ -256,7 +283,7 @@ public class WebTransportTest {
 					return;
 				}
 
-				channelHandlerContext.writeAndFlush(new WebTransportStreamFrame(Unpooled.wrappedBuffer(payload))).addListener(futue -> {
+				channelHandlerContext.writeAndFlush(new WebTransportStreamFrame(frame.streamId(), Unpooled.wrappedBuffer(payload))).addListener(futue -> {
 					if (futue.isSuccess()) {
 						System.out.println("WebTransport stream packet sent: payload = " + Arrays.toString(payload));
 					} else {

@@ -138,7 +138,7 @@ public final class Http3CodecUtils {
      * See <a href="https://tools.ietf.org/html/draft-ietf-quic-transport-32#section-16">
      *     Variable-Length Integer Encoding</a>.
      */
-    static void writeVariableLengthInteger(ByteBuf out, long value) {
+    public static void writeVariableLengthInteger(ByteBuf out, long value) {
         int numBytes = numBytesForVariableLengthInteger(value);
         writeVariableLengthInteger(out, value, numBytes);
     }
