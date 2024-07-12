@@ -113,12 +113,7 @@ public class WebTransportTest {
 				.forServer(selfSignedCertificate.key(), null, selfSignedCertificate.cert())
 				.applicationProtocols(Http3.supportedApplicationProtocols()).build();
 
-		QuicServerCodecBuilder codecBuilder = Http3.newQuicServerCodecBuilder();
-
-		WebTransportDatagramCodec.prepare(codecBuilder);
-		WebTransportStreamCodec.prepare(codecBuilder);
-
-		ChannelHandler codec = codecBuilder
+		ChannelHandler codec = WebTransport.newQuicServerCodecBuilder()
 				.sslContext(sslContext)
 				.maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
 				.tokenHandler(InsecureQuicTokenHandler.INSTANCE)
@@ -146,7 +141,7 @@ public class WebTransportTest {
 								ch.pipeline().addLast(createEchoHandler(messages, testType));
 							}
 						};
-						ch.pipeline().addLast(new Http3ServerConnectionHandler(streamChannelInitializer, null, null, WebTransportStreamCodec.createSettingsFrameFromServer(), true));
+						ch.pipeline().addLast(new Http3ServerConnectionHandler(streamChannelInitializer, null, null, WebTransport.createSettingsFrame(), true));
 					}
 				}).build();
 

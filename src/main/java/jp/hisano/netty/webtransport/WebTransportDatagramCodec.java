@@ -12,10 +12,6 @@ import static io.netty.incubator.codec.http3.Http3CodecUtils.readVariableLengthI
 import static io.netty.incubator.codec.http3.Http3CodecUtils.writeVariableLengthInteger;
 
 public final class WebTransportDatagramCodec extends ChannelDuplexHandler {
-	public static void prepare(QuicServerCodecBuilder quicServerCodecBuilder) {
-		quicServerCodecBuilder.datagram(1000, 1000);
-	}
-
 	@Override
 	public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
 		if (msg instanceof ByteBuf) {
