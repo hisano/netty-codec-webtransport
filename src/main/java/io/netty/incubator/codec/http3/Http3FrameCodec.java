@@ -28,6 +28,7 @@ import io.netty.incubator.codec.quic.QuicStreamFrame;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
+import jp.hisano.netty.webtransport.WebTransportSession;
 import jp.hisano.netty.webtransport.WebTransportStream;
 import jp.hisano.netty.webtransport.WebTransportStreamFrame;
 import org.jetbrains.annotations.Nullable;
@@ -74,7 +75,7 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
     private ReadResumptionListener readResumptionListener;
     private WriteResumptionListener writeResumptionListener;
 
-    private WebTransportStream _webTransportStream;
+    private WebTransportStream webTransportStream;
 
     static Http3FrameCodecFactory newFactory(QpackDecoder qpackDecoder,
                                              long maxHeaderListSize, QpackEncoder qpackEncoder) {
@@ -171,7 +172,7 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
             return;
         }
 
-        if (_webTransportStream != null) {
+        if (webTransportStream != null) {
             out.add(new WebTransportStreamFrame(in.readRetainedSlice(in.readableBytes())));
             return;
         }
@@ -345,8 +346,17 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
                 return payLoadLength;
             case WEBTRANSPORT_BIDIRECTIONAL_FRAME_TYPE:
                 long sessionId = payLoadLength;
-                long streamId = ((QuicStreamChannel)ctx.channel()).streamId();
-                _webTransportStream = new WebTransportStream((QuicStreamChannel) ctx.channel(), sessionId, streamId);
+                long streamId = ((QuicStreamChannel) ctx.channel()).streamId();
+                WebTransportStream stream = new WebTransportStream((QuicStreamChannel) ctx.channel(), sessionId, streamId);
+
+                WebTransportSession session = WebTransportSession.toSession((QuicStreamChannel) ctx.channel());
+                if (session == null || session.id() != sessionId) {
+                    throw new IllegalStateException();
+                }
+
+                session.addStream(stream);
+                this.webTransportStream = stream;
+
                 return payLoadLength;
             default:
                 if (!Http3CodecUtils.isReservedFrameType(longType)) {
