@@ -6,15 +6,12 @@ import com.microsoft.playwright.BrowserType;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import io.netty.bootstrap.Bootstrap;
-import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -30,10 +27,10 @@ import io.netty.incubator.codec.http3.Http3ServerConnectionHandler;
 import io.netty.incubator.codec.http3.Http3UnknownFrame;
 import io.netty.incubator.codec.quic.InsecureQuicTokenHandler;
 import io.netty.incubator.codec.quic.QuicChannel;
+import io.netty.incubator.codec.quic.QuicServerCodecBuilder;
 import io.netty.incubator.codec.quic.QuicSslContext;
 import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
-import io.netty.util.ReferenceCountUtil;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -53,9 +50,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import static io.netty.incubator.codec.http3.Http3CodecUtils.numBytesForVariableLengthInteger;
-import static io.netty.incubator.codec.http3.Http3CodecUtils.readVariableLengthInteger;
-import static io.netty.incubator.codec.http3.Http3CodecUtils.writeVariableLengthInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class WebTransportTest {
@@ -121,9 +115,13 @@ public class WebTransportTest {
 	private static void startServer(BlockingQueue<String> messages, SelfSignedCertificate selfSignedCertificate, TestType testType, EventLoopGroup eventLoopGroup) throws InterruptedException {
 		QuicSslContext sslContext = QuicSslContextBuilder.forServer(selfSignedCertificate.key(), null, selfSignedCertificate.cert())
 				.applicationProtocols(Http3.supportedApplicationProtocols()).build();
-		ChannelHandler codec = Http3.newQuicServerCodecBuilder()
+
+		QuicServerCodecBuilder codecBuilder = Http3.newQuicServerCodecBuilder();
+
+		WebTransportDatagramCodec.prepare(codecBuilder);
+
+		ChannelHandler codec = codecBuilder
 				.sslContext(sslContext)
-				.datagram(2048, 2048)
 				.maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
 				.initialMaxData(10000000)
 				.initialMaxStreamDataBidirectionalLocal(1000000)
@@ -137,38 +135,9 @@ public class WebTransportTest {
 					protected void initChannel(QuicChannel ch) {
 						System.out.println("Connection created: channelId = " + ch.id());
 
-						ch.pipeline().addLast(new ChannelDuplexHandler() {
-							@Override
-							public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-								if (msg instanceof ByteBuf) {
-									ByteBuf in = (ByteBuf) msg;
-									int sessionIdLength = numBytesForVariableLengthInteger(in.getByte(in.readerIndex()));
-									if (in.readableBytes() < sessionIdLength) {
-										return;
-									}
-									long streamId = readVariableLengthInteger(in, sessionIdLength);
-									ctx.fireChannelRead(new WebTransportStreamFrame(streamId, in.readRetainedSlice(in.readableBytes())));
-									ReferenceCountUtil.release(msg);
-								} else {
-									super.channelRead(ctx, msg);
-								}
-							}
-
-							@Override
-							public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-								if (msg instanceof WebTransportStreamFrame) {
-									WebTransportStreamFrame frame = (WebTransportStreamFrame) msg;
-									ByteBuf out = Unpooled.buffer(frame.content().readableBytes() + 8);
-									writeVariableLengthInteger(out, frame.streamId());
-									out.writeBytes(frame.content());
-									ReferenceCountUtil.release(frame);
-									ctx.write(out, promise);
-								} else {
-									super.write(ctx, msg, promise);
-								}
-							}
-						});
-						ch.pipeline().addLast(createWebTransportFrameHandler(messages, testType));
+						// For datagrams
+						ch.pipeline().addLast(new WebTransportDatagramCodec());
+						ch.pipeline().addLast(createWebTransportFrameEchoHandler(messages, testType));
 
 						ch.pipeline().addLast(new Http3ServerConnectionHandler(
 								new ChannelInitializer<QuicStreamChannel>() {
@@ -219,7 +188,7 @@ public class WebTransportTest {
 											}
 										});
 										ch.pipeline().addLast(new WebTransportSessionHandler());
-										ch.pipeline().addLast(createWebTransportFrameHandler(messages, testType));
+										ch.pipeline().addLast(createWebTransportFrameEchoHandler(messages, testType));
 									}
 								}, null, null, WebTransportSessionHandler.createSettingsFrameFromServer(), true));
 					}
@@ -231,7 +200,7 @@ public class WebTransportTest {
 				.bind(new InetSocketAddress(4433)).sync().channel();
 	}
 
-	private static SimpleChannelInboundHandler<WebTransportStreamFrame> createWebTransportFrameHandler(BlockingQueue<String> messages, TestType testType) {
+	private static SimpleChannelInboundHandler<WebTransportStreamFrame> createWebTransportFrameEchoHandler(BlockingQueue<String> messages, TestType testType) {
 		return new SimpleChannelInboundHandler<WebTransportStreamFrame>() {
 			@Override
 			protected void channelRead0(ChannelHandlerContext channelHandlerContext, WebTransportStreamFrame frame) throws Exception {
