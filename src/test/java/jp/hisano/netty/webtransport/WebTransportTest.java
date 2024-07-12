@@ -151,7 +151,7 @@ public class WebTransportTest {
 				}
 			});
 			page.navigate("https://localhost:4433/");
-			page.textContent("*").contains("Hello World!");
+			page.textContent("*").contains("LOADED");
 			waiter.await(10, TimeUnit.MINUTES);
 		}
 	}
