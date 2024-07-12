@@ -28,7 +28,20 @@ Hello World!
                 await transport.ready;
                 console.log('WebTransport connection established.');
 
-                if ($IS_UNIDIRECTIONAL_STREAM) {
+                const testType = "$TEST_TYPE"
+                if (testType == "DATAGRAM") {
+                    const writer = transport.datagrams.writable.getWriter();
+                    console.log('Writer created.');
+
+                    await writer.write(new TextEncoder().encode('abc'));
+                    console.log('Data sent: abc');
+
+                    await writer.write(new TextEncoder().encode('def'));
+                    console.log('Data sent: def');
+
+                    await writer.close();
+                    console.log('Stream closed.');
+                } else if (testType == "UNIDIRECTIONAL") {
                     const stream = await transport.createUnidirectionalStream();
                     console.log('Stream created.');
 

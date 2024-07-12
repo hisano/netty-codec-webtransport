@@ -32,7 +32,7 @@ import static io.netty.channel.ChannelFutureListener.CLOSE_ON_FAILURE;
 import static io.netty.incubator.codec.http3.Http3ErrorCode.H3_INTERNAL_ERROR;
 import static io.netty.incubator.codec.quic.QuicStreamType.UNIDIRECTIONAL;
 
-final class Http3CodecUtils {
+public final class Http3CodecUtils {
 
     // See https://tools.ietf.org/html/draft-ietf-quic-http-32#section-7.2.8
     static final long MIN_RESERVED_FRAME_TYPE = 0x1f * 1 + 0x21;
@@ -182,7 +182,7 @@ final class Http3CodecUtils {
      * See <a href="https://tools.ietf.org/html/draft-ietf-quic-transport-32#section-16">
      *     Variable-Length Integer Encoding </a>
      */
-    static long readVariableLengthInteger(ByteBuf in, int len) {
+    public static long readVariableLengthInteger(ByteBuf in, int len) {
         switch (len) {
             case 1:
                 return in.readUnsignedByte();
@@ -203,7 +203,7 @@ final class Http3CodecUtils {
      * See <a href="https://tools.ietf.org/html/draft-ietf-quic-transport-32#section-16">
      *     Variable-Length Integer Encoding </a>
      */
-    static int numBytesForVariableLengthInteger(byte b) {
+    public static int numBytesForVariableLengthInteger(byte b) {
         byte val = (byte) (b >> 6);
         if ((val & 1) != 0) {
             if ((val & 2) != 0) {
