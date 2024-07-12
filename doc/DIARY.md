@@ -45,3 +45,9 @@
 ### 2024/07/10(水)
 
 - サーバ→クライアントのBidirectional Streamに対応
+
+### 2024/07/12(金)
+
+- Unidirectional Streamに対応
+- Datagramに対応
+- クラスを整理
