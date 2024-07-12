@@ -8,7 +8,6 @@ import com.microsoft.playwright.Playwright;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
@@ -20,11 +19,8 @@ import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.incubator.codec.http3.DefaultHttp3DataFrame;
 import io.netty.incubator.codec.http3.DefaultHttp3HeadersFrame;
 import io.netty.incubator.codec.http3.Http3;
-import io.netty.incubator.codec.http3.Http3DataFrame;
 import io.netty.incubator.codec.http3.Http3HeadersFrame;
-import io.netty.incubator.codec.http3.Http3RequestStreamInboundHandler;
 import io.netty.incubator.codec.http3.Http3ServerConnectionHandler;
-import io.netty.incubator.codec.http3.Http3UnknownFrame;
 import io.netty.incubator.codec.quic.InsecureQuicTokenHandler;
 import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.incubator.codec.quic.QuicServerCodecBuilder;
@@ -113,94 +109,55 @@ public class WebTransportTest {
 	}
 
 	private static void startServer(BlockingQueue<String> messages, SelfSignedCertificate selfSignedCertificate, TestType testType, EventLoopGroup eventLoopGroup) throws InterruptedException {
-		QuicSslContext sslContext = QuicSslContextBuilder.forServer(selfSignedCertificate.key(), null, selfSignedCertificate.cert())
+		QuicSslContext sslContext = QuicSslContextBuilder
+				.forServer(selfSignedCertificate.key(), null, selfSignedCertificate.cert())
 				.applicationProtocols(Http3.supportedApplicationProtocols()).build();
 
 		QuicServerCodecBuilder codecBuilder = Http3.newQuicServerCodecBuilder();
 
 		WebTransportDatagramCodec.prepare(codecBuilder);
+		WebTransportStreamCodec.prepare(codecBuilder);
 
 		ChannelHandler codec = codecBuilder
 				.sslContext(sslContext)
 				.maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
-				.initialMaxData(10000000)
-				.initialMaxStreamDataBidirectionalLocal(1000000)
-				.initialMaxStreamDataBidirectionalRemote(1000000)
-				.initialMaxStreamDataUnidirectional(1000000)
-				.initialMaxStreamsBidirectional(100)
-				.initialMaxStreamsUnidirectional(100)
 				.tokenHandler(InsecureQuicTokenHandler.INSTANCE)
 				.handler(new ChannelInitializer<QuicChannel>() {
 					@Override
 					protected void initChannel(QuicChannel ch) {
-						System.out.println("Connection created: channelId = " + ch.id());
-
 						// For datagrams
 						ch.pipeline().addLast(new WebTransportDatagramCodec());
-						ch.pipeline().addLast(createWebTransportFrameEchoHandler(messages, testType));
+						ch.pipeline().addLast(createEchoHandler(messages, testType));
 
-						ch.pipeline().addLast(new Http3ServerConnectionHandler(
-								new ChannelInitializer<QuicStreamChannel>() {
-									// Called for each request-stream,
+						// For streams
+						ChannelHandler streamChannelInitializer = new ChannelInitializer<QuicStreamChannel>() {
+							@Override
+							protected void initChannel(QuicStreamChannel ch) {
+								ch.pipeline().addLast(new WebTransportStreamCodec() {
 									@Override
-									protected void initChannel(QuicStreamChannel ch) {
-										System.out.println("Stream created: streamId = " + ch.streamId());
-
-										ch.pipeline().addLast(new Http3RequestStreamInboundHandler() {
-											boolean isHttpRequest;
-
-											@Override
-											protected void channelRead(ChannelHandlerContext ctx, Http3UnknownFrame frame) {
-												System.out.println("Unknown frame received: content = " + new String(ByteBufUtil.getBytes(frame.content())));
-
-												super.channelRead(ctx, frame);
-											}
-
-											@Override
-											protected void channelRead(
-													ChannelHandlerContext ctx, Http3HeadersFrame frame) {
-												System.out.println("Headers frame received: headers = " + frame.headers());
-
-												if ("/webtransport".equals(frame.headers().path().toString())) {
-													ctx.fireChannelRead(frame);
-													return;
-												}
-
-												isHttpRequest = true;
-											}
-
-											@Override
-											protected void channelRead(
-													ChannelHandlerContext ctx, Http3DataFrame frame) {
-												System.out.println("Data frame received: " + Arrays.toString(ByteBufUtil.getBytes(frame.content())));
-
-												frame.release();
-											}
-
-											@Override
-											protected void channelInputClosed(ChannelHandlerContext ctx) {
-												if (!isHttpRequest) {
-													((QuicStreamChannel) ctx.channel()).shutdownOutput();
-													return;
-												}
-
-												sendHtmlContent(selfSignedCertificate, testType, ctx);
-											}
-										});
-										ch.pipeline().addLast(new WebTransportSessionHandler());
-										ch.pipeline().addLast(createWebTransportFrameEchoHandler(messages, testType));
+									protected void channelRead(ChannelHandlerContext ctx, Http3HeadersFrame frame) throws Exception {
+										if ("/webtransport".equals(frame.headers().path().toString())) {
+											super.channelRead(ctx, frame);
+										} else {
+											sendHtmlContent(selfSignedCertificate, testType, ctx);
+										}
 									}
-								}, null, null, WebTransportSessionHandler.createSettingsFrameFromServer(), true));
+								});
+								ch.pipeline().addLast(createEchoHandler(messages, testType));
+							}
+						};
+						ch.pipeline().addLast(new Http3ServerConnectionHandler(streamChannelInitializer, null, null, WebTransportStreamCodec.createSettingsFrameFromServer(), true));
 					}
 				}).build();
+
 		Bootstrap bs = new Bootstrap();
-		Channel channel = bs.group(eventLoopGroup)
-				.channel(NioDatagramChannel.class)
-				.handler(codec)
-				.bind(new InetSocketAddress(4433)).sync().channel();
+		bs.group(eventLoopGroup);
+		bs.channel(NioDatagramChannel.class);
+		bs.handler(codec);
+		bs.bind(new InetSocketAddress(4433)).sync();
 	}
 
-	private static SimpleChannelInboundHandler<WebTransportStreamFrame> createWebTransportFrameEchoHandler(BlockingQueue<String> messages, TestType testType) {
+	private static SimpleChannelInboundHandler<WebTransportStreamFrame> createEchoHandler(BlockingQueue<String> messages, TestType testType) {
 		return new SimpleChannelInboundHandler<WebTransportStreamFrame>() {
 			@Override
 			protected void channelRead0(ChannelHandlerContext channelHandlerContext, WebTransportStreamFrame frame) throws Exception {
