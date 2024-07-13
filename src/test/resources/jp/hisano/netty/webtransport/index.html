@@ -15,6 +15,10 @@
             return bytes.buffer;
         }
 
+        function sleepAsync(millis) {
+            return new Promise((resolve) => setTimeout(resolve, millis));
+        }
+
         if ('WebTransport' in window) {
             const transport = new WebTransport('https://localhost:4433/webtransport', {
                 serverCertificateHashes: [
@@ -52,9 +56,6 @@
                         const data = new TextDecoder().decode(value);
                         console.log('Data received: ' + data)
                     }
-
-                    await writer.close();
-                    console.log('Stream closed.');
                 } else if (testType == "UNIDIRECTIONAL") {
                     const stream = await transport.createUnidirectionalStream();
                     console.log('Stream created.');
@@ -67,9 +68,6 @@
 
                     await writer.write(new TextEncoder().encode('def'));
                     console.log('Data sent: def');
-
-                    await writer.close();
-                    console.log('Stream closed.');
                 } else {
                     const stream = await transport.createBidirectionalStream();
                     console.log('Stream created.');
@@ -97,10 +95,10 @@
                         const data = new TextDecoder().decode(value);
                         console.log('Data received: ' + data)
                     }
-
-                    await writer.close();
-                    console.log('Stream closed.');
                 }
+
+                await transport.close({closeCode: 9999, reason: "unknown"});
+                console.log('Transport closed.');
             } catch (error) {
                 console.error('Failed to send data via WebTransport:', error);
             }

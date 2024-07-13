@@ -68,7 +68,7 @@ public class WebTransportTest {
 				assertEquals("packet received from server: abc", clientMessages.poll());
 				assertEquals("packet received from server: def", clientMessages.poll());
 			}
-			assertEquals("stream closed", clientMessages.poll());
+			assertEquals("session closed: errorCode = 9999, errorMessage = unknown", serverMessages.poll());
 		} finally {
 			eventLoopGroup.shutdownGracefully();
 		}
@@ -96,8 +96,7 @@ public class WebTransportTest {
 					String payload = text.substring("Data received: ".length());
 					messages.add("packet received from server: " + payload);
 				}
-				if ("Stream closed.".equals(message.text())) {
-					messages.add("stream closed");
+				if ("Transport closed.".equals(message.text())) {
 					waiter.countDown();
 				}
 			});
@@ -138,6 +137,7 @@ public class WebTransportTest {
 									}
 								});
 								ch.pipeline().addLast(createEchoHandler(messages, testType));
+								ch.pipeline().addLast(createCloseHandler(messages));
 							}
 						};
 						ch.pipeline().addLast(new Http3ServerConnectionHandler(streamChannelInitializer, null, null, WebTransport.createSettingsFrame(), true));
@@ -173,6 +173,17 @@ public class WebTransportTest {
 						futue.cause().printStackTrace();
 					}
 				});
+			}
+		};
+	}
+
+	private static SimpleChannelInboundHandler<WebTransportSessionCloseFrame> createCloseHandler(BlockingQueue<String> messages) {
+		return new SimpleChannelInboundHandler<WebTransportSessionCloseFrame>() {
+			@Override
+			protected void channelRead0(ChannelHandlerContext channelHandlerContext, WebTransportSessionCloseFrame frame) throws Exception {
+				System.out.println("WebTransport session closed: errorCode = " + frame.errorCode() + ", errorMessage = " + frame.errorMessage());
+
+				messages.add("session closed: errorCode = " + frame.errorCode() + ", errorMessage = " + frame.errorMessage());
 			}
 		};
 	}

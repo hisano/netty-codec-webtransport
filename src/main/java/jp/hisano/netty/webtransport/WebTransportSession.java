@@ -40,7 +40,7 @@ public final class WebTransportSession {
 		streams.add(stream);
 	}
 
-	private void close() {
+	void close() {
 		parentChannel.attr(SESSION_KEY).set(null);
 	}
 }
