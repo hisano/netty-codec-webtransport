@@ -61,6 +61,9 @@ public class WebTransportTest {
 			startServer(serverMessages, selfSignedCertificate, testType, eventLoopGroup);
 			startClient(clientMessages, selfSignedCertificate);
 
+			if (testType == TestType.UNIDIRECTIONAL || testType == TestType.BIDIRECTIONAL) {
+				assertEquals("stream opened", serverMessages.poll(10, TimeUnit.SECONDS));
+			}
 			assertEquals("packet received from client: abc", serverMessages.poll(10, TimeUnit.SECONDS));
 			assertEquals("packet received from client: def", serverMessages.poll(10, TimeUnit.SECONDS));
 			if (testType != TestType.UNIDIRECTIONAL) {
@@ -175,6 +178,9 @@ public class WebTransportTest {
 							futue.cause().printStackTrace();
 						}
 					});
+				} else if (frame instanceof WebTransportStreamOpenFrame) {
+					System.out.println("WebTransport stream opened");
+					messages.add("stream opened");
 				} else if (frame instanceof WebTransportStreamDataFrame) {
 					WebTransportStreamDataFrame streamDataFrame = (WebTransportStreamDataFrame) frame;
 					byte[] payload = ByteBufUtil.getBytes(streamDataFrame.content());

@@ -29,6 +29,7 @@ import io.netty.util.ReferenceCountUtil;
 import jp.hisano.netty.webtransport.WebTransportSession;
 import jp.hisano.netty.webtransport.WebTransportStream;
 import jp.hisano.netty.webtransport.WebTransportStreamDataFrame;
+import jp.hisano.netty.webtransport.WebTransportStreamOpenFrame;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -128,6 +129,8 @@ abstract class Http3UnidirectionalStreamInboundHandler extends ByteToMessageDeco
                 if (requestStreamHandler != null) {
                     ctx.pipeline().addLast(requestStreamHandler);
                 }
+
+                ctx.fireChannelRead(new WebTransportStreamOpenFrame(stream));
                 break;
             default:
                 initUnknownStream(ctx, type);

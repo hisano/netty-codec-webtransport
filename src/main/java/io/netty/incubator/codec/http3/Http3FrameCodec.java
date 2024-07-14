@@ -31,6 +31,7 @@ import io.netty.util.concurrent.GenericFutureListener;
 import jp.hisano.netty.webtransport.WebTransportSession;
 import jp.hisano.netty.webtransport.WebTransportStream;
 import jp.hisano.netty.webtransport.WebTransportStreamDataFrame;
+import jp.hisano.netty.webtransport.WebTransportStreamOpenFrame;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.SocketAddress;
@@ -347,6 +348,7 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
             case WEBTRANSPORT_BIDIRECTIONAL_FRAME_TYPE:
                 long sessionId = payLoadLength;
                 this.webTransportStream = WebTransportSession.createAndAddStream(sessionId, ((QuicStreamChannel) ctx.channel()));
+                out.add(new WebTransportStreamOpenFrame(this.webTransportStream));
                 return payLoadLength;
             default:
                 if (!Http3CodecUtils.isReservedFrameType(longType)) {

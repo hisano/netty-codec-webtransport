@@ -19,7 +19,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelOutboundHandlerAdapter;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpStatusClass;
-import jp.hisano.netty.webtransport.WebTransportStreamDataFrame;
+import jp.hisano.netty.webtransport.WebTransportStreamFrame;
 import org.jetbrains.annotations.Nullable;
 
 import static io.netty.incubator.codec.http3.Http3FrameValidationUtils.frameTypeUnexpected;
@@ -79,7 +79,7 @@ final class Http3RequestStreamEncodeStateValidator extends ChannelOutboundHandle
      */
     @Nullable
     static State evaluateFrame(State state, Http3RequestStreamFrame frame) {
-        if (frame instanceof Http3PushPromiseFrame || frame instanceof Http3UnknownFrame || frame instanceof WebTransportStreamDataFrame) {
+        if (frame instanceof Http3PushPromiseFrame || frame instanceof Http3UnknownFrame || frame instanceof WebTransportStreamFrame) {
             // always allow push promise frames.
             return state;
         }
