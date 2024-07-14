@@ -66,9 +66,9 @@ public class WebTransportStreamCodec extends Http3RequestStreamInboundHandler {
 					break;
 			}
 
-			session.close();
-
 			ctx.fireChannelRead(new WebTransportSessionCloseFrame(errorCode, errorMessage));
+
+			session.close();
 		} finally {
 			frame.release();
 		}

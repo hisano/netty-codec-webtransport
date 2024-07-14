@@ -41,6 +41,8 @@ public final class WebTransportSession {
 	}
 
 	void close() {
-		parentChannel.attr(SESSION_KEY).set(null);
+		channel().close().addListener(future -> {
+			channel().attr(SESSION_KEY).set(null);
+		});
 	}
 }
