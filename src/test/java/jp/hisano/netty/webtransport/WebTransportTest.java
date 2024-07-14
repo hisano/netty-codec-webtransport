@@ -242,6 +242,6 @@ public class WebTransportTest {
 	private enum TestType {
 //		DATAGRAM,
 		UNIDIRECTIONAL,
-//		BIDIRECTIONAL,
+		BIDIRECTIONAL,
 	}
 }

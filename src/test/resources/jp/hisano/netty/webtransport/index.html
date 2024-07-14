@@ -101,6 +101,9 @@
                         const data = new TextDecoder().decode(value);
                         console.log('Data received: ' + data)
                     }
+
+                    await writer.close()
+                    console.info('Stream closed.')
                 }
 
                 await transport.close({closeCode: 9999, reason: "unknown"});
