@@ -27,6 +27,7 @@ import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import jp.hisano.netty.webtransport.WebTransportSession;
+import jp.hisano.netty.webtransport.WebTransportStream;
 import jp.hisano.netty.webtransport.WebTransportStreamDataFrame;
 import org.jetbrains.annotations.Nullable;
 
@@ -116,12 +117,12 @@ abstract class Http3UnidirectionalStreamInboundHandler extends ByteToMessageDeco
                 }
                 long sessionId = Http3CodecUtils.readVariableLengthInteger(in, sessionIdLen);
 
-                WebTransportSession.createAndAddStream(sessionId, ((QuicStreamChannel) ctx.channel()));
+                WebTransportStream stream = WebTransportSession.createAndAddStream(sessionId, ((QuicStreamChannel) ctx.channel()));
 
                 ctx.pipeline().replace(this, null, new SimpleChannelInboundHandler<ByteBuf>() {
                     @Override
                     protected void channelRead0(ChannelHandlerContext channelHandlerContext, ByteBuf byteBuf) throws Exception {
-                        ctx.fireChannelRead(new WebTransportStreamDataFrame(byteBuf.retain()));
+                        ctx.fireChannelRead(new WebTransportStreamDataFrame(stream, byteBuf.retain()));
                     }
                 });
                 if (requestStreamHandler != null) {

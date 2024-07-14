@@ -67,7 +67,9 @@ public class WebTransportTest {
 				assertEquals("packet received from server: abc", clientMessages.poll(10, TimeUnit.SECONDS));
 				assertEquals("packet received from server: def", clientMessages.poll(10, TimeUnit.SECONDS));
 			}
-			assertEquals("stream closed", serverMessages.poll(10, TimeUnit.SECONDS));
+			if (testType == TestType.UNIDIRECTIONAL || testType == TestType.BIDIRECTIONAL) {
+				assertEquals("stream closed", serverMessages.poll(10, TimeUnit.SECONDS));
+			}
 			assertEquals("session closed: errorCode = 9999, errorMessage = unknown", serverMessages.poll(10, TimeUnit.SECONDS));
 		} finally {
 			eventLoopGroup.shutdownGracefully();
@@ -153,13 +155,29 @@ public class WebTransportTest {
 		bs.bind(new InetSocketAddress(4433)).sync();
 	}
 
-	private static SimpleChannelInboundHandler<WebTransportStreamFrame> createEchoHandler(BlockingQueue<String> messages, TestType testType) {
-		return new SimpleChannelInboundHandler<WebTransportStreamFrame>() {
+	private static SimpleChannelInboundHandler<WebTransportFrame> createEchoHandler(BlockingQueue<String> messages, TestType testType) {
+		return new SimpleChannelInboundHandler<WebTransportFrame>() {
 			@Override
-			protected void channelRead0(ChannelHandlerContext channelHandlerContext, WebTransportStreamFrame frame) throws Exception {
-				if (frame instanceof WebTransportStreamDataFrame) {
-					WebTransportStreamDataFrame dataFrame = (WebTransportStreamDataFrame) frame;
-					byte[] payload = ByteBufUtil.getBytes(dataFrame.content());
+			protected void channelRead0(ChannelHandlerContext channelHandlerContext, WebTransportFrame frame) throws Exception {
+				if (frame instanceof WebTransportDatagramFrame) {
+					WebTransportDatagramFrame datagramFrame = (WebTransportDatagramFrame) frame;
+					byte[] payload = ByteBufUtil.getBytes(datagramFrame.content());
+
+					System.out.println("WebTransport packet received: payload = " + Arrays.toString(payload));
+
+					messages.add("packet received from client: " + new String(payload, StandardCharsets.UTF_8));
+
+					channelHandlerContext.writeAndFlush(new WebTransportDatagramFrame(datagramFrame.session(), Unpooled.wrappedBuffer(payload))).addListener(futue -> {
+						if (futue.isSuccess()) {
+							System.out.println("WebTransport stream packet sent: payload = " + Arrays.toString(payload));
+						} else {
+							System.out.println("Sending WebTransport stream packet failed: payload = " + Arrays.toString(payload));
+							futue.cause().printStackTrace();
+						}
+					});
+				} else if (frame instanceof WebTransportStreamDataFrame) {
+					WebTransportStreamDataFrame streamDataFrame = (WebTransportStreamDataFrame) frame;
+					byte[] payload = ByteBufUtil.getBytes(streamDataFrame.content());
 
 					System.out.println("WebTransport packet received: payload = " + Arrays.toString(payload));
 
@@ -169,7 +187,7 @@ public class WebTransportTest {
 						return;
 					}
 
-					channelHandlerContext.writeAndFlush(new WebTransportStreamDataFrame(dataFrame.stream(), Unpooled.wrappedBuffer(payload))).addListener(futue -> {
+					channelHandlerContext.writeAndFlush(new WebTransportStreamDataFrame(streamDataFrame.stream(), Unpooled.wrappedBuffer(payload))).addListener(futue -> {
 						if (futue.isSuccess()) {
 							System.out.println("WebTransport stream packet sent: payload = " + Arrays.toString(payload));
 						} else {
@@ -240,7 +258,7 @@ public class WebTransportTest {
 	}
 
 	private enum TestType {
-//		DATAGRAM,
+		DATAGRAM,
 		UNIDIRECTIONAL,
 		BIDIRECTIONAL,
 	}
