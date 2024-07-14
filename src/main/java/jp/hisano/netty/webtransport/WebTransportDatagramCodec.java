@@ -22,8 +22,8 @@ public final class WebTransportDatagramCodec extends ChannelDuplexHandler {
 
 			try {
 				WebTransportSession session = WebTransportSession.toSession((QuicChannel) ctx.channel());
-				if (session != null && session.id() == sessionId) {
-					ctx.fireChannelRead(new WebTransportStreamFrame(sessionId, in.readRetainedSlice(in.readableBytes())));
+				if (session != null && session.sessionId() == sessionId) {
+					ctx.fireChannelRead(new WebTransportStreamDataFrame(in.readRetainedSlice(in.readableBytes())));
 				}
 			} finally {
 				ReferenceCountUtil.release(msg);
@@ -35,8 +35,8 @@ public final class WebTransportDatagramCodec extends ChannelDuplexHandler {
 
 	@Override
 	public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-		if (msg instanceof WebTransportStreamFrame) {
-			WebTransportStreamFrame out = (WebTransportStreamFrame) msg;
+		if (msg instanceof WebTransportStreamDataFrame) {
+			WebTransportStreamDataFrame out = (WebTransportStreamDataFrame) msg;
 
 			ByteBuf encoded = ctx.alloc().buffer(out.content().readableBytes() + 8);
 			writeVariableLengthInteger(encoded, out.streamId());

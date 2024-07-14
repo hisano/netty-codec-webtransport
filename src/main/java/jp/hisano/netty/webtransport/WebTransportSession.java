@@ -18,22 +18,34 @@ public final class WebTransportSession {
 		return channel.parent().attr(SESSION_KEY).get();
 	}
 
-	private final QuicChannel parentChannel;
-	private final QuicStreamChannel parentStreamChannel;
+	public static WebTransportStream createAndAddStream(long sessionId, QuicStreamChannel streamChannel) {
+		WebTransportSession session = WebTransportSession.toSession(streamChannel);
+		if (session == null || session.sessionId() != sessionId) {
+			throw new IllegalStateException();
+		}
+
+		WebTransportStream stream = new WebTransportStream(session, streamChannel);
+		session.addStream(stream);
+		return stream;
+	}
+
+	private final QuicStreamChannel connectStreamChannel;
 
 	private final List<WebTransportStream> streams = new CopyOnWriteArrayList<>();
 
-	WebTransportSession(QuicStreamChannel parentStreamChannel) {
-		this.parentChannel = parentStreamChannel.parent();
-		this.parentStreamChannel = parentStreamChannel;
+	WebTransportSession(QuicStreamChannel connectStreamChannel) {
+		this.connectStreamChannel = connectStreamChannel;
 
-		parentChannel.attr(SESSION_KEY).set(this);
-
-		parentStreamChannel.closeFuture().addListener(future -> close());
+		channel().attr(SESSION_KEY).set(this);
+		channel().closeFuture().addListener(future -> channel().attr(SESSION_KEY).set(null));
 	}
 
-	public long id() {
-		return parentStreamChannel.streamId();
+	private QuicChannel channel() {
+		return connectStreamChannel.parent();
+	}
+
+	public long sessionId() {
+		return connectStreamChannel.streamId();
 	}
 
 	public void addStream(WebTransportStream stream) {
@@ -41,8 +53,6 @@ public final class WebTransportSession {
 	}
 
 	void close() {
-		channel().close().addListener(future -> {
-			channel().attr(SESSION_KEY).set(null);
-		});
+		channel().close();
 	}
 }

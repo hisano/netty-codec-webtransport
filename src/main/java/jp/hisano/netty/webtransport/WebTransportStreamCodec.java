@@ -3,6 +3,7 @@ package jp.hisano.netty.webtransport;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.socket.ChannelInputShutdownReadComplete;
 import io.netty.incubator.codec.http3.DefaultHttp3HeadersFrame;
 import io.netty.incubator.codec.http3.Http3CodecUtils;
 import io.netty.incubator.codec.http3.Http3DataFrame;
@@ -81,5 +82,20 @@ public class WebTransportStreamCodec extends Http3RequestStreamInboundHandler {
 
 	@Override
 	protected void channelInputClosed(ChannelHandlerContext ctx) throws Exception {
+	}
+
+	@Override
+	public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+		if (isWebTransportStream(ctx) && evt == ChannelInputShutdownReadComplete.INSTANCE) {
+			WebTransportStream stream = WebTransportStream.toStream((QuicStreamChannel) ctx.channel());
+			ctx.fireChannelRead(new WebTransportStreamCloseFrame(stream));
+			stream.close();
+		} else {
+			super.userEventTriggered(ctx, evt);
+		}
+	}
+
+	private boolean isWebTransportStream(ChannelHandlerContext ctx) {
+		return WebTransportStream.toStream((QuicStreamChannel) ctx.channel()) != null;
 	}
 }

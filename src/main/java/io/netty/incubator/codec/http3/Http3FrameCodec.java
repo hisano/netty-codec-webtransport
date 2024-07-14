@@ -30,7 +30,7 @@ import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
 import jp.hisano.netty.webtransport.WebTransportSession;
 import jp.hisano.netty.webtransport.WebTransportStream;
-import jp.hisano.netty.webtransport.WebTransportStreamFrame;
+import jp.hisano.netty.webtransport.WebTransportStreamDataFrame;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.SocketAddress;
@@ -173,7 +173,7 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
         }
 
         if (webTransportStream != null) {
-            out.add(new WebTransportStreamFrame(in.readRetainedSlice(in.readableBytes())));
+            out.add(new WebTransportStreamDataFrame(webTransportStream, in.readRetainedSlice(in.readableBytes())));
             return;
         }
 
@@ -346,17 +346,7 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
                 return payLoadLength;
             case WEBTRANSPORT_BIDIRECTIONAL_FRAME_TYPE:
                 long sessionId = payLoadLength;
-                long streamId = ((QuicStreamChannel) ctx.channel()).streamId();
-                WebTransportStream stream = new WebTransportStream((QuicStreamChannel) ctx.channel(), sessionId, streamId);
-
-                WebTransportSession session = WebTransportSession.toSession((QuicStreamChannel) ctx.channel());
-                if (session == null || session.id() != sessionId) {
-                    throw new IllegalStateException();
-                }
-
-                session.addStream(stream);
-                this.webTransportStream = stream;
-
+                this.webTransportStream = WebTransportSession.createAndAddStream(sessionId, ((QuicStreamChannel) ctx.channel()));
                 return payLoadLength;
             default:
                 if (!Http3CodecUtils.isReservedFrameType(longType)) {
@@ -489,8 +479,8 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
                 writeMaxPushIdFrame(ctx, (Http3MaxPushIdFrame) msg, promise);
             } else if (msg instanceof Http3UnknownFrame) {
                 writeUnknownFrame(ctx, (Http3UnknownFrame) msg, promise);
-            } else if (msg instanceof WebTransportStreamFrame) {
-                writeWebTransportStreamFrame(ctx, (WebTransportStreamFrame) msg, promise);
+            } else if (msg instanceof WebTransportStreamDataFrame) {
+                writeWebTransportStreamDataFrame(ctx, (WebTransportStreamDataFrame) msg, promise);
             } else {
                 unsupported(promise);
             }
@@ -627,8 +617,8 @@ final class Http3FrameCodec extends ByteToMessageDecoder implements ChannelOutbo
         ctx.write(Unpooled.wrappedUnmodifiableBuffer(out, content), promise);
     }
 
-    private void writeWebTransportStreamFrame(ChannelHandlerContext ctx, WebTransportStreamFrame frame, ChannelPromise promise) {
-        ctx.write(frame.content().retain(), promise);
+    private void writeWebTransportStreamDataFrame(ChannelHandlerContext ctx, WebTransportStreamDataFrame dataFrame, ChannelPromise promise) {
+        ctx.write(dataFrame.content().retain(), promise);
     }
 
     private void initReadResumptionListenerIfRequired(ChannelHandlerContext ctx) {

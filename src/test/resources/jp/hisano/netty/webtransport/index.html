@@ -68,6 +68,12 @@
 
                     await writer.write(new TextEncoder().encode('def'));
                     console.log('Data sent: def');
+
+                    writer.releaseLock()
+                    console.log('Lock released.');
+
+                    await stream.close()
+                    console.info('Stream closed.')
                 } else {
                     const stream = await transport.createBidirectionalStream();
                     console.log('Stream created.');

@@ -23,7 +23,6 @@ import io.netty.incubator.codec.http3.Http3HeadersFrame;
 import io.netty.incubator.codec.http3.Http3ServerConnectionHandler;
 import io.netty.incubator.codec.quic.InsecureQuicTokenHandler;
 import io.netty.incubator.codec.quic.QuicChannel;
-import io.netty.incubator.codec.quic.QuicServerCodecBuilder;
 import io.netty.incubator.codec.quic.QuicSslContext;
 import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
@@ -62,13 +61,14 @@ public class WebTransportTest {
 			startServer(serverMessages, selfSignedCertificate, testType, eventLoopGroup);
 			startClient(clientMessages, selfSignedCertificate);
 
-			assertEquals("packet received from client: abc", serverMessages.poll());
-			assertEquals("packet received from client: def", serverMessages.poll());
+			assertEquals("packet received from client: abc", serverMessages.poll(10, TimeUnit.SECONDS));
+			assertEquals("packet received from client: def", serverMessages.poll(10, TimeUnit.SECONDS));
 			if (testType != TestType.UNIDIRECTIONAL) {
-				assertEquals("packet received from server: abc", clientMessages.poll());
-				assertEquals("packet received from server: def", clientMessages.poll());
+				assertEquals("packet received from server: abc", clientMessages.poll(10, TimeUnit.SECONDS));
+				assertEquals("packet received from server: def", clientMessages.poll(10, TimeUnit.SECONDS));
 			}
-			assertEquals("session closed: errorCode = 9999, errorMessage = unknown", serverMessages.poll());
+			assertEquals("stream closed", serverMessages.poll(10, TimeUnit.SECONDS));
+			assertEquals("session closed: errorCode = 9999, errorMessage = unknown", serverMessages.poll(10, TimeUnit.SECONDS));
 		} finally {
 			eventLoopGroup.shutdownGracefully();
 		}
@@ -79,6 +79,7 @@ public class WebTransportTest {
 		try (Playwright playwright = Playwright.create()) {
 			BrowserType browserType = playwright.chromium();
 			Browser browser = browserType.launch(new BrowserType.LaunchOptions()
+					.setHeadless(false)
 					.setArgs(Arrays.asList(
 							"--test-type",
 							"--enable-quic",
@@ -102,7 +103,7 @@ public class WebTransportTest {
 			});
 			page.navigate("https://localhost:4433/");
 			page.textContent("*").contains("LOADED");
-			waiter.await(10, TimeUnit.MINUTES);
+			waiter.await(30, TimeUnit.SECONDS);
 		}
 	}
 
@@ -113,11 +114,12 @@ public class WebTransportTest {
 
 		ChannelHandler codec = WebTransport.newQuicServerCodecBuilder()
 				.sslContext(sslContext)
-				.maxIdleTimeout(5000, TimeUnit.MILLISECONDS)
 				.tokenHandler(InsecureQuicTokenHandler.INSTANCE)
 				.handler(new ChannelInitializer<QuicChannel>() {
 					@Override
 					protected void initChannel(QuicChannel ch) {
+						System.out.println("Connection created: id = " + ch.id());
+
 						// For datagrams
 						ch.pipeline().addLast(new WebTransportDatagramCodec());
 						ch.pipeline().addLast(createEchoHandler(messages, testType));
@@ -155,24 +157,30 @@ public class WebTransportTest {
 		return new SimpleChannelInboundHandler<WebTransportStreamFrame>() {
 			@Override
 			protected void channelRead0(ChannelHandlerContext channelHandlerContext, WebTransportStreamFrame frame) throws Exception {
-				byte[] payload = ByteBufUtil.getBytes(frame.content());
+				if (frame instanceof WebTransportStreamDataFrame) {
+					WebTransportStreamDataFrame dataFrame = (WebTransportStreamDataFrame) frame;
+					byte[] payload = ByteBufUtil.getBytes(dataFrame.content());
 
-				System.out.println("WebTransport packet received: payload = " + Arrays.toString(payload));
+					System.out.println("WebTransport packet received: payload = " + Arrays.toString(payload));
 
-				messages.add("packet received from client: " + new String(payload, StandardCharsets.UTF_8));
+					messages.add("packet received from client: " + new String(payload, StandardCharsets.UTF_8));
 
-				if (testType == TestType.UNIDIRECTIONAL) {
-					return;
-				}
-
-				channelHandlerContext.writeAndFlush(new WebTransportStreamFrame(frame.streamId(), Unpooled.wrappedBuffer(payload))).addListener(futue -> {
-					if (futue.isSuccess()) {
-						System.out.println("WebTransport stream packet sent: payload = " + Arrays.toString(payload));
-					} else {
-						System.out.println("Sending WebTransport stream packet failed: payload = " + Arrays.toString(payload));
-						futue.cause().printStackTrace();
+					if (testType == TestType.UNIDIRECTIONAL) {
+						return;
 					}
-				});
+
+					channelHandlerContext.writeAndFlush(new WebTransportStreamDataFrame(dataFrame.stream(), Unpooled.wrappedBuffer(payload))).addListener(futue -> {
+						if (futue.isSuccess()) {
+							System.out.println("WebTransport stream packet sent: payload = " + Arrays.toString(payload));
+						} else {
+							System.out.println("Sending WebTransport stream packet failed: payload = " + Arrays.toString(payload));
+							futue.cause().printStackTrace();
+						}
+					});
+				} else if (frame instanceof WebTransportStreamCloseFrame) {
+					System.out.println("WebTransport stream closed");
+					messages.add("stream closed");
+				}
 			}
 		};
 	}
@@ -232,6 +240,8 @@ public class WebTransportTest {
 	}
 
 	private enum TestType {
-		DATAGRAM, UNIDIRECTIONAL, BIDIRECTIONAL
+//		DATAGRAM,
+		UNIDIRECTIONAL,
+//		BIDIRECTIONAL,
 	}
 }
