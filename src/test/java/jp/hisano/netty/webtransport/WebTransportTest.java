@@ -103,7 +103,7 @@ public class WebTransportTest {
 			});
 			page.navigate("https://localhost:4433/");
 			page.textContent("*").contains("LOADED");
-			waiter.await(30, TimeUnit.SECONDS);
+			waiter.await(10, TimeUnit.SECONDS);
 		}
 	}
 
