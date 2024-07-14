@@ -51,3 +51,13 @@
 - Unidirectional Streamに対応
 - Datagramに対応
 - クラスを整理
+
+### 2024/07/13(土)
+
+- Transport#closeに対応
+
+### 2024/07/14(日)
+
+- Unidirectional Streamのcloseに対応
+- Bidirectional Streamのcloseに対応
+- Datagram関連のAPIを改良
