@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" href="data:,">
+</head>
+<body>
+<script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        function decodeBase64(base64) {
+            var bytesString = atob(base64);
+            var bytes = new Uint8Array(bytesString.length);
+            for (var i = 0; i < bytesString.length; i++) {
+                bytes[i] = bytesString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function sleepAsync(millis) {
+            return new Promise((resolve) => setTimeout(resolve, millis));
+        }
+
+        if ('WebTransport' in window) {
+            const transport = new WebTransport('https://localhost:4433/echo', {
+                serverCertificateHashes: [
+                    {algortithm: 'sha-256', value: decodeBase64('$CERTIFICATE_HASH')}
+                ]
+            });
+            console.log('WebTransport connection started.');
+
+            try {
+                await transport.ready;
+                console.log('WebTransport connection established.');
+
+                const stream = await transport.createBidirectionalStream();
+                console.log('Stream created.');
+
+                const writer = stream.writable.getWriter();
+                console.log('Writer created.');
+
+                const reader = stream.readable.getReader();
+                console.log('Reader created.');
+
+                await writer.write(new TextEncoder().encode('abc'));
+                console.log('Data sent: abc');
+
+                {
+                    const { value, done } = await reader.read();
+                    const data = new TextDecoder().decode(value);
+                    console.log('Data received: ' + data)
+                }
+
+                await writer.write(new TextEncoder().encode('def'));
+                console.log('Data sent: def');
+
+                {
+                    const { value, done } = await reader.read();
+                    const data = new TextDecoder().decode(value);
+                    console.log('Data received: ' + data)
+                }
+
+                await writer.close()
+                console.info('Stream closed.')
+
+                await transport.close({closeCode: 9999, reason: "unknown"});
+                console.log('Transport closed.');
+            } catch (error) {
+                console.error('Failed to send data via WebTransport:', error);
+            }
+        } else {
+            console.error('WebTransport is not supported in your browser.');
+        }
+    });
+</script>
+LOADED
+</body>
+</html>

@@ -54,7 +54,7 @@ public class WebTransportTest {
 		BlockingQueue<String> serverMessages = new LinkedBlockingQueue<>();
 		BlockingQueue<String> clientMessages = new LinkedBlockingQueue<>();
 
-		SelfSignedCertificate selfSignedCertificate = createSelfSignedCertificateForLocalHost();
+		SelfSignedCertificate selfSignedCertificate = CertificateUtils.createSelfSignedCertificateForLocalHost();
 
 		NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup();
 		try {
@@ -84,13 +84,12 @@ public class WebTransportTest {
 		try (Playwright playwright = Playwright.create()) {
 			BrowserType browserType = playwright.chromium();
 			Browser browser = browserType.launch(new BrowserType.LaunchOptions()
-					.setHeadless(false)
 					.setArgs(Arrays.asList(
 							"--test-type",
 							"--enable-quic",
 							"--quic-version=h3",
 							"--origin-to-force-quic-on=localhost:4433",
-							"--ignore-certificate-errors-spki-list=" + toPublicKeyHashAsBase64(selfSignedCertificate.cert())
+							"--ignore-certificate-errors-spki-list=" + CertificateUtils.toPublicKeyHashAsBase64(selfSignedCertificate)
 					)));
 
 			Page page = browser.newPage();
@@ -139,7 +138,7 @@ public class WebTransportTest {
 										if ("/webtransport".equals(frame.headers().path().toString())) {
 											super.channelRead(ctx, frame);
 										} else {
-											sendHtmlContent(selfSignedCertificate, testType, ctx);
+											HttpUtils.sendHtmlContent(ctx, "index.html", selfSignedCertificate, fileContent -> fileContent.replace("$TEST_TYPE", "" + testType));
 										}
 									}
 								});
@@ -218,49 +217,6 @@ public class WebTransportTest {
 				messages.add("session closed: errorCode = " + frame.errorCode() + ", errorMessage = " + frame.errorMessage());
 			}
 		};
-	}
-
-	private static void sendHtmlContent(SelfSignedCertificate selfSignedCertificate, TestType testType, ChannelHandlerContext ctx) {
-		String fileContent;
-		try {
-			fileContent = new String(Resources.toByteArray(Resources.getResource(WebTransportTest.class, "index.html")), StandardCharsets.UTF_8);
-		} catch (IOException e) {
-			throw new IllegalStateException(e);
-		}
-		String replacedContent = fileContent
-				.replace("$CERTIFICATE_HASH", toPublicKeyHashAsBase64(selfSignedCertificate.cert()))
-				.replace("$TEST_TYPE", "" + testType);
-		byte[] replacedContentBytes = replacedContent.getBytes(StandardCharsets.UTF_8);
-
-		Http3HeadersFrame headersFrame = new DefaultHttp3HeadersFrame();
-		headersFrame.headers().status("200");
-		headersFrame.headers().add("server", "netty");
-		headersFrame.headers().add("content-type", "text/html");
-		headersFrame.headers().addInt("content-length", replacedContentBytes.length);
-		ctx.write(headersFrame);
-
-		ctx.writeAndFlush(new DefaultHttp3DataFrame(Unpooled.wrappedBuffer(replacedContentBytes))).addListener(QuicStreamChannel.SHUTDOWN_OUTPUT);
-	}
-
-	private static SelfSignedCertificate createSelfSignedCertificateForLocalHost() throws CertificateException {
-		Date now = new Date();
-		Date oneDayLater = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-		return new SelfSignedCertificate(now, oneDayLater, "EC", 256);
-	}
-
-	private static String toPublicKeyHashAsBase64(X509Certificate certificate) {
-		PublicKey publicKey = certificate.getPublicKey();
-
-		byte[] publicKeyAsDer = publicKey.getEncoded();
-
-		byte[] publicKeyHash;
-		try {
-			publicKeyHash = MessageDigest.getInstance("SHA-256").digest(publicKeyAsDer);
-		} catch (NoSuchAlgorithmException e) {
-			throw new IllegalStateException(e);
-		}
-
-		return Base64.getEncoder().encodeToString(publicKeyHash);
 	}
 
 	private enum TestType {
