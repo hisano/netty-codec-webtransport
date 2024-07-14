@@ -4,7 +4,7 @@ import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.util.AttributeKey;
 
-import java.util.List;
+import java.util.Collection;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class WebTransportSession {
@@ -25,13 +25,14 @@ public final class WebTransportSession {
 		}
 
 		WebTransportStream stream = new WebTransportStream(session, streamChannel);
+		stream.streamChannel().closeFuture().addListener(future -> session.removeStream(stream));
 		session.addStream(stream);
 		return stream;
 	}
 
 	private final QuicStreamChannel connectStreamChannel;
 
-	private final List<WebTransportStream> streams = new CopyOnWriteArrayList<>();
+	private final Collection<WebTransportStream> streams = new CopyOnWriteArrayList<>();
 
 	WebTransportSession(QuicStreamChannel connectStreamChannel) {
 		this.connectStreamChannel = connectStreamChannel;
@@ -48,8 +49,16 @@ public final class WebTransportSession {
 		return connectStreamChannel.streamId();
 	}
 
-	public void addStream(WebTransportStream stream) {
+	public Collection<WebTransportStream> streams() {
+		return streams;
+	}
+
+	private void addStream(WebTransportStream stream) {
 		streams.add(stream);
+	}
+
+	private void removeStream(WebTransportStream stream) {
+		streams.remove(stream);
 	}
 
 	void close() {
